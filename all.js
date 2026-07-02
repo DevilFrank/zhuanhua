@@ -23,64 +23,23 @@ var ADS_RECOGNITION_CONFIG = {
 		'continue now',
 		'get my quote',
 		'get my results',
+		'check now',
+		'start now',
+		'next step',
+		'proceed',
+		'calculate',
+		'find out',
+		'get matched',
+		'show me',
+		'show results',
+		'get result',
+		'get results',
 		'enviar',
 		'continuar',
 		'siguiente',
-	],
-	downloadKeywords: ['download', 'install', 'get app', 'get now', 'start download', 'free download', 'descargar', 'instalar'],
-	downloadHrefKeywords: ['.apk', '.exe', '.dmg', '.msi', '.zip', '.pkg', '.deb', '.pdf', 'download', 'install'],
-	conversionKeywords: [
-		'apply',
-		'claim',
-		'get started',
-		'get quote',
-		'request quote',
-		'check eligibility',
-		'sign up',
-		'register',
-		'see results',
-		'start',
-		'join now',
-		'continue now',
-		'book now',
-		'schedule',
-		'buy now',
-		'order now',
-		'enviar',
-		'continuar',
-		'siguiente',
-	],
-	conversionNegativeKeywords: [
-		'cookie',
-		'privacy',
-		'terms',
-		'login',
-		'log in',
-		'sign in',
-		'search',
-		'newsletter',
-		'subscribe',
-		'menu',
-		'close',
-		'accept',
-		'agree',
-	],
-	contactKeywords: [
-		'contact',
-		'contact us',
-		'customer service',
-		'customer support',
-		'support',
-		'help',
-		'chat',
-		'chat now',
-		'live chat',
-		'call now',
-		'service',
-		'contactar',
-		'soporte',
 	],
 	maxCandidates: 5,
+	maxFieldAncestorDepth: 5,
 }
 var ADS_FORM_STEPS = [
 	'fullName',
@@ -129,36 +88,13 @@ var ADS_SUPPORTING_FORM_STEPS = [
 	'monthlySalary',
 	'employmentStatus',
 ]
-var ADS_FALLBACK_PERSION = {
-	address: '2463  Robinson Lane',
-	birthday: '10/8/1993',
-	bloodType: 'AB+',
-	chainIDCard: '',
-	city: 'Columbus',
-	companyName: 'The Warner Brothers Store',
-	companySize: '10-50 employees',
-	creditCardNumber: '5146999899351784',
-	creditCardType: 'MasterCard',
-	cvv2: '226',
-	employmentStatus: 'Military service',
-	expires: '08/2026',
-	fullName: 'Ma Nan Ge',
-	gender: 'Female',
-	hairColor: 'Blond',
-	height: '5\' 4" (165cm)',
-	monthlySalary: '$6,900',
-	occupation: 'Painter, Washing',
-	socialSecurityNumber: '658-57-1349',
-	state: 'OH',
-	stateFull: 'Ohio',
-	telephone: '614-670-2062',
-	temporaryMail: 'ejaeygkujv@iubridge.com',
-	title: 'Mrs.',
-	weight: '165.7lbs (75.2kg)',
-	xian: '',
-	zipCode: '43201',
+var ADS_NON_FIELD_INPUT_TYPES = ['hidden', 'submit', 'button', 'reset', 'image', 'file']
+if (typeof window !== 'undefined' && !window.JSBehavior) {
+	window.JSBehavior = {
+		jsResult: (...args) => console.log('jsResult', ...args),
+		dotrack: (...args) => console.log('dotrack', ...args),
+	}
 }
-var persion = ADS_FALLBACK_PERSION
 
 var adsNormalizeSpace = value =>
 	String(value || '')
@@ -188,15 +124,52 @@ var adsTextMatches = (text, keywords, exactScore, includeScore) => {
 		return normalizedText.includes(normalizedKeyword) ? Math.max(score, includeScore) : score
 	}, 0)
 }
+var adsGetTextByIds = (element, attributeName) =>
+	String(element.getAttribute(attributeName) || '')
+		.split(/\s+/)
+		.map(id => id && element.ownerDocument.getElementById(id))
+		.filter(Boolean)
+		.map(item => adsNormalizeSpace(item.textContent))
+		.filter(Boolean)
+		.join(' | ')
+var getAdsDataText = element =>
+	[
+		element.getAttribute('data-testid'),
+		element.getAttribute('data-test'),
+		element.getAttribute('data-cy'),
+		element.getAttribute('data-name'),
+		element.getAttribute('data-label'),
+		element.getAttribute('data-placeholder'),
+	].join(' ')
 var getAdsFieldLabel = element => {
 	const parentLabel = element.closest('label')
 	if (parentLabel) return adsNormalizeSpace(parentLabel.textContent)
-	if (!element.id) return ''
+	const labels = element.labels ? Array.from(element.labels) : []
+	if (labels.length)
+		return labels
+			.map(label => adsNormalizeSpace(label.textContent))
+			.filter(Boolean)
+			.join(' | ')
+	if (!element.id) return adsGetTextByIds(element, 'aria-labelledby')
 	const label = Array.from(element.ownerDocument.querySelectorAll('label')).find(item => item.htmlFor === element.id)
-	return label ? adsNormalizeSpace(label.textContent) : ''
+	return label ? adsNormalizeSpace(label.textContent) : adsGetTextByIds(element, 'aria-labelledby')
+}
+var getAdsWrapperText = element => {
+	let current = element.parentElement
+	for (let depth = 0; current && depth < 3; depth += 1, current = current.parentElement) {
+		const text = adsNormalizeSpace(current.textContent)
+		if (text && text.length <= 180) return text
+	}
+	return ''
 }
 var getAdsNearbyText = element =>
-	[element?.previousElementSibling?.textContent, element?.nextElementSibling?.textContent]
+	[
+		element?.previousElementSibling?.textContent,
+		element?.nextElementSibling?.textContent,
+		element?.parentElement?.previousElementSibling?.textContent,
+		element?.parentElement?.nextElementSibling?.textContent,
+		adsGetTextByIds(element, 'aria-describedby'),
+	]
 		.map(adsNormalizeSpace)
 		.filter(Boolean)
 		.join(' | ')
@@ -225,6 +198,8 @@ var getAdsFieldSummary = element => ({
 	autocomplete: element.getAttribute('autocomplete') || '',
 	labelText: getAdsFieldLabel(element),
 	nearbyText: getAdsNearbyText(element),
+	wrapperText: getAdsWrapperText(element),
+	dataText: getAdsDataText(element),
 	inputMode: element.getAttribute('inputmode') || '',
 	visible: adsIsVisible(element),
 	disabled: Boolean(element.disabled),
@@ -234,11 +209,68 @@ var getAdsFieldSummary = element => ({
 var getAdsVisibleFields = (root, config) =>
 	adsQueryAll(root, config.fieldSelector)
 		.map(field => ({ element: field, summary: getAdsFieldSummary(field) }))
-		.filter(({ summary }) => summary.visible && !summary.disabled && !summary.readOnly && summary.type !== 'hidden')
+		.filter(({ summary }) => summary.visible && !summary.disabled && !summary.readOnly && !ADS_NON_FIELD_INPUT_TYPES.includes(summary.type))
+var adsUniqueElements = elements => {
+	const used = new Set()
+	return elements.filter(element => {
+		if (!element || used.has(element)) return false
+		used.add(element)
+		return true
+	})
+}
+var adsElementContains = (container, child) => container === child || Boolean(container?.contains?.(child))
+var adsGetRect = element => (element && typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : null)
+var getAdsEntriesBounds = entries => {
+	const rects = entries.map(({ element }) => adsGetRect(element)).filter(rect => rect && rect.width > 0 && rect.height > 0)
+	if (!rects.length) return null
+	return {
+		left: Math.min(...rects.map(rect => rect.left)),
+		top: Math.min(...rects.map(rect => rect.top)),
+		right: Math.max(...rects.map(rect => rect.right)),
+		bottom: Math.max(...rects.map(rect => rect.bottom)),
+		width: Math.max(...rects.map(rect => rect.right)) - Math.min(...rects.map(rect => rect.left)),
+		height: Math.max(...rects.map(rect => rect.bottom)) - Math.min(...rects.map(rect => rect.top)),
+	}
+}
+var isAdsRootContainer = element => {
+	const tagName = String(element?.tagName || '').toLowerCase()
+	return tagName === 'html' || tagName === 'body'
+}
+var getAdsFieldCandidateContainers = (fieldEntry, config) => {
+	const field = fieldEntry.element
+	const containers = []
+	if (field.form) containers.push(field.form)
+	const semanticContainer = field.closest(config.candidateSelector)
+	if (semanticContainer) containers.push(semanticContainer)
+	let current = field.parentElement
+	for (let depth = 0; current && depth < config.maxFieldAncestorDepth; depth += 1, current = current.parentElement) {
+		if (isAdsRootContainer(current)) break
+		containers.push(current)
+	}
+	return adsUniqueElements(containers).filter(adsIsVisible)
+}
+var getAdsCandidateContainers = (root, fieldEntries, config) =>
+	adsUniqueElements([
+		...adsQueryAll(root, config.candidateSelector),
+		...fieldEntries.flatMap(fieldEntry => getAdsFieldCandidateContainers(fieldEntry, config)),
+	]).filter(element => adsIsVisible(element) && !isAdsRootContainer(element))
 var summarizeAdsCandidate = (element, fieldEntries, config) => {
 	const textBlob = adsNormalizeText(element.textContent)
 	const fieldText = fieldEntries
-		.map(({ summary }) => [summary.type, summary.name, summary.id, summary.placeholder, summary.ariaLabel].join(' '))
+		.map(({ summary }) =>
+			[
+				summary.type,
+				summary.name,
+				summary.id,
+				summary.placeholder,
+				summary.ariaLabel,
+				summary.autocomplete,
+				summary.labelText,
+				summary.nearbyText,
+				summary.wrapperText,
+				summary.dataText,
+			].join(' '),
+		)
 		.join(' ')
 	let domDepth = 0
 	for (let parent = element.parentElement; parent; parent = parent.parentElement) domDepth += 1
@@ -258,13 +290,36 @@ var summarizeAdsCandidate = (element, fieldEntries, config) => {
 		textSample: textBlob.slice(0, 160),
 	}
 }
-var findAdsSubmitButton = (container, config) => {
+var getAdsSubmitButtonScore = (summary, config) => {
+	const text = [summary.text, summary.ariaLabel, summary.title, summary.name, summary.id, summary.className].join(' ')
+	return Math.max(summary.type === 'submit' ? 12 : 0, adsTextMatches(text, config.submitKeywords, 14, 9))
+}
+var getAdsButtonProximityScore = (button, fieldEntries) => {
+	const fieldBounds = getAdsEntriesBounds(fieldEntries)
+	const buttonRect = adsGetRect(button)
+	if (!fieldBounds || !buttonRect) return 0
+	const horizontalOverlap = Math.max(0, Math.min(fieldBounds.right, buttonRect.right) - Math.max(fieldBounds.left, buttonRect.left))
+	const overlapRatio = horizontalOverlap / Math.max(1, Math.min(fieldBounds.width, buttonRect.width))
+	const verticalGap = buttonRect.top - fieldBounds.bottom
+	if (verticalGap >= -12 && verticalGap <= 360 && overlapRatio > 0.25) return 6
+	if (Math.abs(verticalGap) <= 520) return 3
+	return -6
+}
+var findAdsSubmitButton = (container, config, fieldEntries = [], root = null) => {
 	let bestButton = null
-	for (const element of adsQueryAll(container, config.buttonSelector)) {
+	const localButtons = adsQueryAll(container, config.buttonSelector)
+	const rootButtons = root && fieldEntries.length ? adsQueryAll(root, config.buttonSelector) : []
+	const buttons = adsUniqueElements([...localButtons, ...rootButtons])
+	for (const element of buttons) {
 		const summary = summarizeAdsClickable(element)
 		if (!summary.visible) continue
-		const text = [summary.text, summary.name, summary.id, summary.className].join(' ')
-		const score = Math.max(summary.type === 'submit' ? 10 : 0, adsTextMatches(text, config.submitKeywords, 12, 8))
+		const isLocal = adsElementContains(container, element)
+		const isOwnedByForm = element.form && element.form === container
+		if (!isLocal && !isOwnedByForm && !fieldEntries.length) continue
+		let score = getAdsSubmitButtonScore(summary, config)
+		if (isLocal || isOwnedByForm) score += 3
+		else score += getAdsButtonProximityScore(element, fieldEntries)
+		if (score < 8) continue
 		if (score > 0 && (!bestButton || score > bestButton.score)) bestButton = { element, summary, score }
 	}
 	return bestButton || null
@@ -278,14 +333,15 @@ var getAdsFieldMatchScore = (summary, step) => {
 		summary.autocomplete,
 		summary.labelText,
 		summary.nearbyText,
+		summary.wrapperText,
+		summary.dataText,
 		summary.className,
 	].join(' ')
 	let score = adsTextMatches(text, ADS_FIELD_ALIASES[step] || [], 18, 10)
-	if (step === 'fullName' && ['text', ''].includes(summary.type)) score += 2
-	if (step === 'age' && (summary.type === 'number' || summary.inputMode === 'numeric')) score += 8
-	if (step === 'telephone' && (summary.type === 'tel' || summary.inputMode === 'tel')) score += 14
-	if (step === 'temporaryMail' && summary.type === 'email') score += 14
-	if (step === 'birthday' && ['date', 'month'].includes(summary.type)) score += 12
+	if (step === 'age' && score > 0 && (summary.type === 'number' || summary.inputMode === 'numeric')) score += 4
+	if (step === 'telephone' && (summary.type === 'tel' || summary.inputMode === 'tel')) score += score > 0 ? 8 : 16
+	if (step === 'temporaryMail' && summary.type === 'email') score += score > 0 ? 8 : 16
+	if (step === 'birthday' && ['date', 'month'].includes(summary.type)) score += score > 0 ? 8 : 12
 	return score
 }
 var matchAdsFormFields = fieldEntries => {
@@ -296,7 +352,7 @@ var matchAdsFormFields = fieldEntries => {
 		fieldEntries.forEach((entry, entryIndex) => {
 			if (used.has(entryIndex)) return
 			const score = getAdsFieldMatchScore(entry.summary, step)
-			if (score > 0 && (!best || score > best.score)) best = { ...entry, step, entryIndex, score }
+			if (score >= 8 && (!best || score > best.score)) best = { ...entry, step, entryIndex, score }
 		})
 		if (best) {
 			used.add(best.entryIndex)
@@ -382,60 +438,18 @@ var scoreAdsCandidate = (summary, formFields, submitButton) => {
 	addReason(weakFieldPenalty, 'weak-field-semantics')
 	return { total, reasons, matchedFieldCount: formFields.length, primaryFieldCount, supportingFieldCount }
 }
-var findAdsBestClickable = (root, config, scorer) => {
-	let bestTarget = null
-	for (const element of adsQueryAll(root, config.buttonSelector)) {
-		const summary = summarizeAdsClickable(element)
-		const score = summary.visible ? scorer(summary, element) : 0
-		if (score > 0 && (!bestTarget || score > bestTarget.score)) bestTarget = { element, summary, score }
-	}
-	return bestTarget
-}
-var isAdsLowValueClickableArea = element => Boolean(element?.closest?.('nav, header, footer, [role="navigation"]'))
-var findAdsFallbackTargets = (root, config) => ({
-	downloadButton: findAdsBestClickable(root, config, summary => {
-		const textScore = adsTextMatches([summary.text, summary.ariaLabel, summary.title].join(' '), config.downloadKeywords, 12, 9)
-		const hrefScore = config.downloadHrefKeywords.reduce(
-			(score, keyword) => score + (adsNormalizeText(summary.href).includes(adsNormalizeText(keyword)) ? 4 : 0),
-			0,
-		)
-		const score = Math.max(summary.download ? 14 : 0, textScore) + hrefScore
-		return score >= 8 ? score : 0
-	}),
-	phoneLink: (() => {
-		let bestTarget = null
-		for (const element of adsQueryAll(root, 'a[href^="tel:"], a[href*="tel:"]')) {
-			const summary = summarizeAdsClickable(element)
-			if (summary.visible && summary.href && !bestTarget) bestTarget = { element, summary, score: 15 }
-		}
-		return bestTarget
-	})(),
-	contactButton: findAdsBestClickable(root, config, summary => {
-		const score = adsTextMatches([summary.text, summary.ariaLabel, summary.title, summary.href].join(' '), config.contactKeywords, 12, 8)
-		return score >= 8 ? score : 0
-	}),
-	conversionButton: findAdsBestClickable(root, config, (summary, element) => {
-		const textBlob = [summary.text, summary.ariaLabel, summary.title].join(' ')
-		const metaBlob = [summary.name, summary.id, summary.className, summary.href].join(' ')
-		const textScore = adsTextMatches(textBlob, config.conversionKeywords, 14, 10)
-		const metaScore = adsTextMatches(metaBlob, config.conversionKeywords, 8, 5)
-		const negativeScore = adsTextMatches([textBlob, metaBlob].join(' '), config.conversionNegativeKeywords, 14, 10)
-		let score = Math.max(textScore, metaScore) - negativeScore
-		if (isAdsLowValueClickableArea(element)) score -= 8
-		return score >= 10 ? score : 0
-	}),
-})
-
 function recognizeAdsLandingPage(options = {}) {
 	const root = options.root || window.document
 	if (!root) throw new Error('recognizeAdsLandingPage requires a DOM root')
 	const config = { ...ADS_RECOGNITION_CONFIG, ...(options.overrides || {}) }
-	const candidates = adsQueryAll(root, config.candidateSelector)
+	const allFieldEntries = getAdsVisibleFields(root, config)
+	const candidateContainers = getAdsCandidateContainers(root, allFieldEntries, config)
+	const candidates = candidateContainers
 		.map(element => {
-			const fieldEntries = getAdsVisibleFields(element, config)
+			const fieldEntries = allFieldEntries.filter(({ element: fieldElement }) => adsElementContains(element, fieldElement))
 			if (!fieldEntries.length) return null
 			const summary = summarizeAdsCandidate(element, fieldEntries, config)
-			const submitButton = findAdsSubmitButton(element, config)
+			const submitButton = findAdsSubmitButton(element, config, fieldEntries, root)
 			const formFields = matchAdsFormFields(fieldEntries)
 			if (!submitButton) return null
 			const scoreDetails = scoreAdsCandidate(summary, formFields, submitButton)
@@ -456,18 +470,8 @@ function recognizeAdsLandingPage(options = {}) {
 		.filter(Boolean)
 		.sort((left, right) => right.score - left.score)
 		.slice(0, config.maxCandidates)
-	const fallbackTargets = findAdsFallbackTargets(root, config)
-	const preferredTarget = candidates[0]
-		? { type: 'candidate', target: candidates[0] }
-		: fallbackTargets.downloadButton
-			? { type: 'download-button', target: fallbackTargets.downloadButton }
-			: fallbackTargets.phoneLink
-				? { type: 'phone-link', target: fallbackTargets.phoneLink }
-				: fallbackTargets.contactButton
-					? { type: 'contact-button', target: fallbackTargets.contactButton }
-					: fallbackTargets.conversionButton
-						? { type: 'conversion-button', target: fallbackTargets.conversionButton }
-						: null
+	const fallbackTargets = {}
+	const preferredTarget = candidates[0] ? { type: 'candidate', target: candidates[0] } : null
 	return {
 		candidates,
 		bestCandidate: candidates[0] || null,
@@ -521,29 +525,33 @@ var normalizeAdEffectPerson = rawPerson => ({
 	temporaryMail: rawPerson.temporaryMail || '',
 })
 var getAdEffectFormDataUrl = countryCode => `${ADS_FORM_DATA_BASE_URL}${encodeURIComponent(countryCode || '')}`
-var fetchAdEffectPerson = async countryCode => {
-	const response = await fetch(getAdEffectFormDataUrl(countryCode))
-	const result = await response.json()
-	const list = result && Array.isArray(result.data) ? result.data : []
-	if (!list.length) return ADS_FALLBACK_PERSION
-	return normalizeAdEffectPerson(list[Math.floor(Math.random() * list.length)])
-}
-var getAdEffectPerson = async (behaviorsId, countryCode) => {
+var fetchAdEffectPerson = countryCode =>
+	fetch(getAdEffectFormDataUrl(countryCode))
+		.then(response => response.json())
+		.then(result => {
+			const list = result && Array.isArray(result.data) ? result.data : []
+			if (!list.length) return null
+			return normalizeAdEffectPerson(list[Math.floor(Math.random() * list.length)])
+		})
+var getAdEffectPerson = (behaviorsId, countryCode) => {
 	const store = getAdEffectStateStore()
 	const stateKey = getAdEffectStateKey(behaviorsId)
 	const state = store[stateKey] || {}
-	if (state.person) return state.person
-	try {
-		state.person = await fetchAdEffectPerson(countryCode)
-	} catch (error) {
-		state.person = ADS_FALLBACK_PERSION
-	}
-	store[stateKey] = state
-	persion = state.person
-	return state.person
+	if (state.person) return Promise.resolve(state.person)
+	return fetchAdEffectPerson(countryCode)
+		.then(person => {
+			state.person = person
+			store[stateKey] = state
+			return state.person
+		})
+		.catch(error => {
+			state.person = null
+			store[stateKey] = state
+			return state.person
+		})
 }
 
-async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
+function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
 	const nowStep = step || '{step}'
 	let nextStep = ''
 	const ACTION_CONFIG = `{
@@ -554,10 +562,13 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
     "INTERSTITIALCLOSE": {
       "pageFinish": true,
       "slide": false
-    }
-  }`
+	    }
+	  }`
 	const ACTIONSJSON = `{config}`
-	const ACTION_KEY = JSON.parse(ACTIONSJSON)
+	let ACTION_KEY = {}
+	try {
+		ACTION_KEY = JSON.parse(ACTIONSJSON)
+	} catch (error) {}
 	ACTION_KEY['ADEFFECT'] = JSON.parse(ACTION_CONFIG)['ADEFFECT']
 	ACTION_KEY['INTERSTITIALCLOSE'] = JSON.parse(ACTION_CONFIG)['INTERSTITIALCLOSE']
 	const normalizeAction = String(jskey || '')
@@ -798,22 +809,42 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
 	const typeTextLikeKeyboard = (inputElement, text) => {
 		if (!inputElement) return
 		const target = String(text == null ? '' : text)
+		const setNativeValue = value => {
+			const ownDescriptor = Object.getOwnPropertyDescriptor(inputElement, 'value')
+			const prototype = Object.getPrototypeOf(inputElement)
+			const prototypeDescriptor = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')
+			const setter =
+				prototypeDescriptor && prototypeDescriptor.set && (!ownDescriptor || ownDescriptor.set !== prototypeDescriptor.set)
+					? prototypeDescriptor.set
+					: ownDescriptor && ownDescriptor.set
+			if (setter) setter.call(inputElement, value)
+			else inputElement.value = value
+		}
+		const dispatchInputEvent = data => {
+			try {
+				inputElement.dispatchEvent(
+					new InputEvent('input', {
+						data,
+						inputType: data ? 'insertText' : 'deleteContentBackward',
+						bubbles: true,
+					}),
+				)
+			} catch (error) {
+				inputElement.dispatchEvent(new Event('input', { bubbles: true }))
+			}
+		}
 		inputElement.focus()
-		inputElement.value = ''
-		inputElement.dispatchEvent(new Event('input', { bubbles: true }))
+		setNativeValue('')
+		dispatchInputEvent('')
 
+		let currentValue = ''
 		for (let i = 0; i < target.length; i++) {
 			const ch = target[i]
 			inputElement.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }))
 			inputElement.dispatchEvent(new KeyboardEvent('keypress', { key: ch, bubbles: true }))
-			inputElement.value += ch
-			inputElement.dispatchEvent(
-				new InputEvent('input', {
-					data: ch,
-					inputType: 'insertText',
-					bubbles: true,
-				}),
-			)
+			currentValue += ch
+			setNativeValue(currentValue)
+			dispatchInputEvent(ch)
 			inputElement.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }))
 		}
 		inputElement.dispatchEvent(new Event('change', { bubbles: true }))
@@ -836,16 +867,7 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
 	let reportKey = ''
 	let reportPosition = ''
 	const getAdEffectRecognition = () => (typeof recognizeAdsLandingPage === 'function' ? recognizeAdsLandingPage() : null)
-	const hasAdEffectTarget = recognition =>
-		Boolean(
-			recognition &&
-			((recognition.candidates && recognition.candidates.length > 0) ||
-				(recognition.fallbackTargets &&
-					(recognition.fallbackTargets.downloadButton ||
-						recognition.fallbackTargets.phoneLink ||
-						recognition.fallbackTargets.contactButton ||
-						recognition.fallbackTargets.conversionButton))),
-		)
+	const hasAdEffectTarget = recognition => Boolean(recognition && recognition.candidates && recognition.candidates.length > 0)
 	const getAdEffectElementName = element =>
 		adsNormalizeSpace(
 			[
@@ -867,19 +889,6 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
 			return {
 				type: '表单',
 				element: formCandidate.element,
-			}
-		}
-		const preferredTarget = recognition.preferredTarget
-		if (preferredTarget && preferredTarget.target && preferredTarget.target.element) {
-			const typeMap = {
-				'download-button': '下载按钮',
-				'phone-link': '电话a标签',
-				'contact-button': '客服按钮',
-				'conversion-button': '转化按钮',
-			}
-			return {
-				type: typeMap[preferredTarget.type] || '',
-				element: preferredTarget.target.element,
 			}
 		}
 		return null
@@ -910,21 +919,61 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
 	}
 	const getAdEffectFormField = (candidate, stepName) =>
 		candidate && candidate.formFields ? candidate.formFields.find(field => field.step === stepName) : null
+	const getAdEffectFieldValue = (field, formPerson) => {
+		const element = field && field.element
+		const value = formPerson[field.step] == null ? '' : String(formPerson[field.step])
+		if (field.step === 'birthday' && element && String(element.getAttribute('type') || '').toLowerCase() === 'date') {
+			const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+			if (match) {
+				const month = String(match[1]).padStart(2, '0')
+				const day = String(match[2]).padStart(2, '0')
+				return `${match[3]}-${month}-${day}`
+			}
+		}
+		return value
+	}
+	const findAdEffectSelectOption = (element, field, formPerson) => {
+		const options = Array.from(element.options || []).filter(option => !option.disabled)
+		const preferredValues = [
+			getAdEffectFieldValue(field, formPerson),
+			field.step === 'state' ? formPerson.stateFull : '',
+			field.step === 'gender' ? formPerson.gender : '',
+			field.step === 'employmentStatus' ? formPerson.employmentStatus : '',
+		]
+			.map(adsNormalizeText)
+			.filter(Boolean)
+		const matched = options.find(option => {
+			const text = adsNormalizeText([option.textContent, option.value].join(' '))
+			return preferredValues.some(value => text === value || text.includes(value) || value.includes(text))
+		})
+		if (matched) return matched
+		return options.find(option => adsNormalizeSpace(option.value || option.textContent)) || options[0] || null
+	}
 	const fillAdEffectFormField = (field, formPerson) => {
 		if (!field) return
 		const element = field.element
+		const tagName = String(element && element.tagName ? element.tagName : '').toLowerCase()
+		const inputType = String(element && element.getAttribute ? element.getAttribute('type') || '' : '').toLowerCase()
 		if (element && String(element.tagName || '').toLowerCase() === 'select') {
-			const options = Array.from(element.options || [])
-			const lastOption = options[options.length - 1]
-			if (!lastOption) return
+			const option = findAdEffectSelectOption(element, field, formPerson)
+			if (!option) return
 			element.focus()
-			element.value = lastOption.value
-			element.selectedIndex = options.length - 1
+			element.value = option.value
+			element.selectedIndex = Array.from(element.options || []).indexOf(option)
 			element.dispatchEvent(new Event('input', { bubbles: true }))
 			element.dispatchEvent(new Event('change', { bubbles: true }))
 			return
 		}
-		typeTextLikeKeyboard(element, formPerson[field.step] == null ? '' : formPerson[field.step])
+		if (inputType === 'checkbox' || inputType === 'radio') {
+			element.focus()
+			if (!element.checked) element.click()
+			element.dispatchEvent(new Event('input', { bubbles: true }))
+			element.dispatchEvent(new Event('change', { bubbles: true }))
+			return
+		}
+		if (tagName === 'input' || tagName === 'textarea') {
+			typeTextLikeKeyboard(element, getAdEffectFieldValue(field, formPerson))
+		}
 	}
 
 	const shouldSkipInterstitialGuard =
@@ -940,32 +989,27 @@ async function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = 
 	if (normalizeAction === 'ADEFFECT') {
 		const recognition = getAdEffectRecognition()
 		const formCandidate = findAdEffectFormCandidate(recognition, behaviorsId)
-		const preferredTarget = recognition && recognition.preferredTarget
 
 		if (formCandidate) {
 			rememberAdEffectFormCandidate(formCandidate, behaviorsId)
-			const formPerson = await getAdEffectPerson(behaviorsId, countryCode)
-			const formSteps = formCandidate.formFields.map(field => field.step)
-			const adEffectStep = nowStep === '{step}' ? '' : nowStep
-			const currentStepIndex = formSteps.indexOf(adEffectStep)
-			if (currentStepIndex >= 0) {
-				fillAdEffectFormField(getAdEffectFormField(formCandidate, formSteps[currentStepIndex]), formPerson)
-			}
+			getAdEffectPerson(behaviorsId, countryCode).then(formPerson => {
+				const formSteps = formCandidate.formFields.map(field => field.step)
+				const adEffectStep = nowStep === '{step}' ? '' : nowStep
+				const currentStepIndex = formSteps.indexOf(adEffectStep)
+				if (formPerson && currentStepIndex >= 0) {
+					fillAdEffectFormField(getAdEffectFormField(formCandidate, formSteps[currentStepIndex]), formPerson)
+				}
 
-			const nextFormStep = currentStepIndex >= 0 ? formSteps[currentStepIndex + 1] : formSteps[0]
-			if (nextFormStep) {
-				reportAdEffect(getPointPosition(getAdEffectFormField(formCandidate, nextFormStep).element), nextFormStep)
-				return
-			}
+				const nextFormStep = currentStepIndex >= 0 ? formSteps[currentStepIndex + 1] : formSteps[0]
+				if (nextFormStep) {
+					reportAdEffect(getPointPosition(getAdEffectFormField(formCandidate, nextFormStep).element), nextFormStep)
+					return
+				}
 
-			reportAdEffectTrack({ bestCandidate: formCandidate }, '4')
-			reportAdEffect(getPointPosition(formCandidate.submitButton.element), '')
+				reportAdEffectTrack({ bestCandidate: formCandidate }, '4')
+				reportAdEffect(getPointPosition(formCandidate.submitButton.element), '')
+			})
 			return
-		}
-
-		if (preferredTarget && preferredTarget.target && preferredTarget.target.element) {
-			reportAdEffectTrack({ preferredTarget }, '4')
-			reportAdEffect(getPointPosition(preferredTarget.target.element), '')
 		}
 		return
 	} else if (normalizeAction === 'CHECKPAGE') {

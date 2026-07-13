@@ -1069,13 +1069,12 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			if (validElementsWithPoint.length > 0) {
 				const randomData = randomItem(validElementsWithPoint)
 				const randomCoordinate = toPageCoordinate(randomData.point)
-				reportPosition = `${randomCoordinate.x},${randomCoordinate.y}`
-
 				const validElementsWithPointSnapshot = validElementsWithPoint.map((item, index) => ({
 					index,
 					...getValidElementSnapshot(item),
 				}))
 				const randomDataSnapshot = getValidElementSnapshot(randomData)
+				reportPosition = `${randomCoordinate.x},${randomCoordinate.y},${randomDataSnapshot.element.id ? randomDataSnapshot.element.id : 'null'}`
 				const trackData = {
 					normalizeAction,
 					selector,

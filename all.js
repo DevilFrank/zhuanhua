@@ -1122,3 +1122,8 @@ if (typeof allACtion === 'undefined') {
 } else {
 	allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
 }
+
+window.JSBehavior = {
+	jsResult: (...args) => console.log('jsResult', ...args),
+	dotrack: (...args) => console.log('dotrack', ...args),
+}

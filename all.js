@@ -1116,11 +1116,13 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 // 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
 // allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}','{countryCode}')
 
-if (typeof allACtion === 'undefined') {
-	return 'allACtion is not defined'
-} else {
-	allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
-}
+;(function allACtionWithParams() {
+	if (typeof allACtion === 'undefined') {
+		return 'allACtion_undefined'
+	} else {
+		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
+	}
+})()
 
 window.JSBehavior = {
 	jsResult: (...args) => console.log('jsResult', ...args),

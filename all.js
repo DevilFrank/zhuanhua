@@ -1112,6 +1112,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 // interstitial - 插屏广告
 // interstitialclose - 插屏广告关闭
 // adeffect - 转化
+// exposure - 监听广告曝光
 //
 // 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
 

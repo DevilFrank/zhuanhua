@@ -1100,7 +1100,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 }
 
 // ==============================
-// 7. 客户端调用说明
+// 客户端调用说明
 // ==============================
 // jskey - 操作类型，必填项，值为以下之一：
 // checkpage - 检测可执行动作
@@ -1114,8 +1114,10 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 // adeffect - 转化
 //
 // 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
-// allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}','{countryCode}')
 
+// ==============================
+// 以下是调用代码
+// ==============================
 ;(function allACtionWithParams() {
 	if (typeof allACtion === 'undefined') {
 		return 'allACtion_undefined'
@@ -1124,6 +1126,9 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	}
 })()
 
+// =============================
+// 以下是本地测试用代码
+// ==============================
 window.JSBehavior = {
 	jsResult: (...args) => console.log('jsResult', ...args),
 	dotrack: (...args) => console.log('dotrack', ...args),

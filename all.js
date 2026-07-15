@@ -555,15 +555,27 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	const nowStep = step || '{step}'
 	let nextStep = ''
 	const ACTION_CONFIG = `{
-    "ADEFFECT": {
-      "pageFinish": false,
-      "slide": true
+    "CLICKAD": {
+      "selector": "div[id^='adv'] iframe[id^='google_ads_iframe_']",
+      "pageFinish": "true",
+      "slide": "true"
     },
-    "INTERSTITIALCLOSE": {
-      "pageFinish": true,
-      "slide": false
-	    }
-	  }`
+    "SECONDPAGE": {
+      "selector": "div.games-grid a",
+      "pageFinish": "true",
+      "slide": "true"
+    },
+    "BANNER": {
+      "selector": "html>ins[id^='gpt_unit_']:not([style*='100vh']) iframe[id^='google_ads_iframe']",
+      "pageFinish": "true",
+      "slide": "false"
+    },
+    "INTERSTITIAL": {
+      "selector": "html>ins[id^='gpt_unit_'][style*='100vh'] iframe[id^='google_ads_iframe']",
+      "pageFinish": "true",
+      "slide": "false"
+    }
+  }`
 	const ACTIONSJSON = `{config}`
 	let ACTION_KEY = {}
 	try {
@@ -575,6 +587,11 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		.trim()
 		.replace(/[\s_-]+/g, '')
 		.toUpperCase()
+	// EXPOSURE 创建的监听器只运行到下一次 allACtion 调用；停止监听时保留曝光记录供 CLICKAD 使用。
+	const previousAdExposureState = window.__adExposureState
+	if (previousAdExposureState && typeof previousAdExposureState.stop === 'function') {
+		previousAdExposureState.stop()
+	}
 
 	const viewportWidth = window.innerWidth || document.documentElement.clientWidth
 	const viewportHeight = window.innerHeight || document.documentElement.clientHeight
@@ -976,8 +993,209 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 
+	// 广告曝光只复用 CLICKAD 的 selector，不依赖后台为 EXPOSURE 增加配置。
+	// 曝光状态保存在 window 上，保证之后再次调用 allACtion('clickad') 时仍能读取。
+	const AD_EXPOSURE_RATIO = 0.5
+	const AD_EXPOSURE_DURATION_MS = 3000
+	const AD_EXPOSURE_CHECK_INTERVAL_MS = 200
+	const AD_EXPOSURE_SCAN_DELAY_MS = 100
+	const getAdExposureSelector = () =>
+		adsNormalizeSpace(ACTION_KEY.CLICKAD && ACTION_KEY.CLICKAD.selector ? ACTION_KEY.CLICKAD.selector : '')
+	const getAdExposureState = selector => {
+		const state = window.__adExposureState
+		return state && state.selector === selector ? state : null
+	}
+	const getAdExposureViewport = () => ({
+		width: window.innerWidth || document.documentElement.clientWidth,
+		height: window.innerHeight || document.documentElement.clientHeight,
+	})
+	const getElementViewportRatio = element => {
+		if (!element || !element.isConnected) return 0
+		const rect = element.getBoundingClientRect()
+		if (rect.width <= 0 || rect.height <= 0) return 0
+		const viewport = getAdExposureViewport()
+		const visibleWidth = Math.max(0, Math.min(rect.right, viewport.width) - Math.max(rect.left, 0))
+		const visibleHeight = Math.max(0, Math.min(rect.bottom, viewport.height) - Math.max(rect.top, 0))
+		return (visibleWidth * visibleHeight) / (rect.width * rect.height)
+	}
+	const isAdExposurePointVisible = element => {
+		if (!element || !element.isConnected || !hasVisibleStyle(element)) return false
+		const rect = element.getBoundingClientRect()
+		const viewport = getAdExposureViewport()
+		const left = Math.max(0, rect.left)
+		const right = Math.min(viewport.width, rect.right)
+		const top = Math.max(0, rect.top)
+		const bottom = Math.min(viewport.height, rect.bottom)
+		if (right <= left || bottom <= top) return false
+
+		// 使用固定采样点判断广告是否被其他元素遮挡，避免随机点导致曝光结果不稳定。
+		const x25 = left + (right - left) * 0.25
+		const x50 = left + (right - left) * 0.5
+		const x75 = left + (right - left) * 0.75
+		const y25 = top + (bottom - top) * 0.25
+		const y50 = top + (bottom - top) * 0.5
+		const y75 = top + (bottom - top) * 0.75
+		return [
+			[x50, y50],
+			[x25, y25],
+			[x75, y25],
+			[x25, y75],
+			[x75, y75],
+		].some(([x, y]) => pointHitsElement(element, x, y))
+	}
+	const reportAdExposure = (state, record) => {
+		const element = record.element
+		const data = {
+			event: 'exposed',
+			selector: state.selector,
+			exposedAt: record.exposedAt,
+			visibleDurationMs: record.visibleDurationMs,
+			intersectionRatio: record.intersectionRatio,
+			element: {
+				tagName: element.tagName ? element.tagName.toLowerCase() : '',
+				id: element.id || '',
+				className: adsNormalizeSpace(element.className),
+				href: element.getAttribute('href') || '',
+				text: adsNormalizeSpace(element.textContent || element.value || '').slice(0, 200),
+			},
+		}
+		try {
+			// 12 专用于记录广告真正达到曝光标准的时间，不改变 jsResult 的动作返回格式。
+			state.jsBehavior.dotrack('12', JSON.stringify(data))
+		} catch (error) {}
+	}
+	const stopAdExposureListener = state => {
+		if (!state) return
+		state.active = false
+		if (state.observer) state.observer.disconnect()
+		if (state.mutationObserver) state.mutationObserver.disconnect()
+		if (state.checkTimer) window.clearInterval(state.checkTimer)
+		if (state.scanTimer) window.clearTimeout(state.scanTimer)
+		state.checkTimer = null
+		state.scanTimer = null
+	}
+	const startAdExposureListener = selector => {
+		if (!selector) return null
+		const previousState = window.__adExposureState
+		stopAdExposureListener(previousState)
+
+		const state = {
+			selector,
+			startedAt: Date.now(),
+			active: true,
+			records: new Map(),
+			// 保存启动监听时的桥接对象，避免异步曝光回调受到后续全局对象变化影响。
+			jsBehavior: window.JSBehavior,
+			observer: null,
+			mutationObserver: null,
+			checkTimer: null,
+			scanTimer: null,
+			scan: null,
+			stop: null,
+		}
+		state.stop = () => stopAdExposureListener(state)
+		window.__adExposureState = state
+
+		const observeElement = element => {
+			if (!element || state.records.has(element)) return
+			const record = {
+				element,
+				isIntersecting: false,
+				intersectionRatio: 0,
+				visibleSince: 0,
+				lastVisibleAt: 0,
+				exposedAt: 0,
+				visibleDurationMs: 0,
+				exposed: false,
+			}
+			state.records.set(element, record)
+			if (state.observer) state.observer.observe(element)
+		}
+
+		state.scan = () => {
+			if (!state.active) return
+			let elements = []
+			try {
+				elements = Array.from(document.querySelectorAll(state.selector))
+			} catch (error) {
+				return
+			}
+			elements.forEach(observeElement)
+		}
+
+		if (typeof window.IntersectionObserver === 'function') {
+			state.observer = new window.IntersectionObserver(
+				entries => {
+					entries.forEach(entry => {
+						const record = state.records.get(entry.target)
+						if (!record) return
+						record.isIntersecting = entry.isIntersecting
+						record.intersectionRatio = entry.intersectionRatio
+					})
+				},
+				{ threshold: [0, AD_EXPOSURE_RATIO, 1] },
+			)
+		}
+
+		state.checkTimer = window.setInterval(() => {
+			const now = Date.now()
+			state.records.forEach((record, element) => {
+				if (!element.isConnected) {
+					if (state.observer) state.observer.unobserve(element)
+					state.records.delete(element)
+					return
+				}
+				// 首次有效曝光已经记录后保持该结果，后续进出视口不覆盖首次曝光时间。
+				if (record.exposed) return
+
+				// 旧 WebView 没有 IntersectionObserver 时，使用视口面积比例作为降级判断。
+				if (!state.observer) {
+					record.intersectionRatio = getElementViewportRatio(element)
+					record.isIntersecting = record.intersectionRatio > 0
+				}
+				const isVisible = record.isIntersecting && record.intersectionRatio >= AD_EXPOSURE_RATIO && isAdExposurePointVisible(element)
+				if (!isVisible) {
+					record.visibleSince = 0
+					return
+				}
+
+				if (!record.visibleSince) record.visibleSince = now
+				record.lastVisibleAt = now
+				record.visibleDurationMs = now - record.visibleSince
+				if (!record.exposed && record.visibleDurationMs >= AD_EXPOSURE_DURATION_MS) {
+					record.exposed = true
+					record.exposedAt = now
+					reportAdExposure(state, record)
+				}
+			})
+		}, AD_EXPOSURE_CHECK_INTERVAL_MS)
+
+		if (typeof window.MutationObserver === 'function') {
+			const scheduleScan = () => {
+				if (!state.active) return
+				if (state.scanTimer) return
+				state.scanTimer = window.setTimeout(() => {
+					state.scanTimer = null
+					state.scan()
+				}, AD_EXPOSURE_SCAN_DELAY_MS)
+			}
+			state.mutationObserver = new window.MutationObserver(scheduleScan)
+			state.mutationObserver.observe(document.documentElement, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				attributeFilter: ['class', 'id', 'style', 'hidden'],
+			})
+		}
+		state.scan()
+		return state
+	}
+
 	const shouldSkipInterstitialGuard =
-		normalizeAction === 'CHECKPAGE' || normalizeAction === 'INTERSTITIAL' || normalizeAction === 'INTERSTITIALCLOSE'
+		normalizeAction === 'CHECKPAGE' ||
+		normalizeAction === 'INTERSTITIAL' ||
+		normalizeAction === 'INTERSTITIALCLOSE' ||
+		normalizeAction === 'EXPOSURE'
 	if (!shouldSkipInterstitialGuard && ACTION_KEY.INTERSTITIAL && ACTION_KEY.INTERSTITIAL.selector) {
 		const interstitialElements = getValidElementsWithPointBySelector(ACTION_KEY.INTERSTITIAL.selector)
 		if (interstitialElements.length > 0) {
@@ -1032,6 +1250,9 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			reportAdEffectTrack(adEffectRecognition, '5')
 		}
 		reportKey = matchedActionKeys.join(',')
+	} else if (normalizeAction === 'EXPOSURE') {
+		// EXPOSURE 不要求后台配置新 action，直接复制 CLICKAD 的广告 selector 启动监听。
+		startAdExposureListener(getAdExposureSelector())
 	} else if (normalizeAction === 'SEARCH') {
 		const searchConfig = ACTION_KEY.SEARCH || {}
 		const inputElements = getValidElementsWithPointBySelector(searchConfig.inputSelector)
@@ -1062,6 +1283,41 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			reportPosition,
 		}
 		JSBehavior.dotrack('11', JSON.stringify(trackData))
+	} else if (normalizeAction === 'CLICKAD') {
+		const selector = currentAction && currentAction.selector
+		if (selector) {
+			const validElementsWithPoint = getValidElementsWithPointBySelector(selector)
+			const exposureState = getAdExposureState(adsNormalizeSpace(selector))
+			// 启动过曝光监听后只允许点击已曝光元素；未启动时保持原 CLICKAD 行为。
+			const clickableElements = exposureState
+				? validElementsWithPoint.filter(item => {
+						const record = exposureState.records.get(item.element)
+						return Boolean(record && record.exposed)
+					})
+				: validElementsWithPoint
+			if (clickableElements.length > 0) {
+				const randomData = randomItem(clickableElements)
+				const randomCoordinate = toPageCoordinate(randomData.point)
+				const validElementsWithPointSnapshot = clickableElements.map((item, index) => ({
+					index,
+					...getValidElementSnapshot(item),
+				}))
+				const randomDataSnapshot = getValidElementSnapshot(randomData)
+				const exposureRecord = exposureState ? exposureState.records.get(randomData.element) : null
+				reportPosition = `${randomCoordinate.x},${randomCoordinate.y},${randomDataSnapshot.element.id ? randomDataSnapshot.element.id : 'null'}`
+				const trackData = {
+					normalizeAction,
+					selector,
+					exposureFilterEnabled: Boolean(exposureState),
+					exposedAt: exposureRecord ? exposureRecord.exposedAt : '',
+					visibleDurationMs: exposureRecord ? exposureRecord.visibleDurationMs : '',
+					validElementCount: clickableElements.length,
+					validElementsWithPoint: validElementsWithPointSnapshot,
+					randomElementWithPoint: randomDataSnapshot,
+				}
+				JSBehavior.dotrack('11', JSON.stringify(trackData))
+			}
+		}
 	} else {
 		const selector = currentAction && currentAction.selector
 		if (selector) {
@@ -1123,7 +1379,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	if (typeof allACtion === 'undefined') {
 		return 'allACtion_undefined'
 	} else {
-		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
+		allACtion('exposure', '', '', '123123', 'US')
+		// allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
 	}
 })()
 

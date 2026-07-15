@@ -1062,11 +1062,43 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			reportPosition,
 		}
 		JSBehavior.dotrack('11', JSON.stringify(trackData))
+	} else if (normalizeAction === 'CLICKAD') {
+		const selector = currentAction && currentAction.selector
+		if (selector) {
+			const validElementsWithPoint = getValidElementsWithPointBySelector(selector)
+			const validElementCount = validElementsWithPoint.length
+			if (validElementCount > 0) {
+				const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
+				const clickRate = Number(currentAction.clickrate)
+				const randomNum = Math.floor(Math.random() * 100)
+				console.log('clickRate', clickRate, 'randomNum', randomNum, 'validElementCount', validElementCount)
+				const shouldSkipClick = hasClickRate && randomNum > clickRate * validElementCount
+				if (!shouldSkipClick) {
+					const randomData = randomItem(validElementsWithPoint)
+					const randomCoordinate = toPageCoordinate(randomData.point)
+					const validElementsWithPointSnapshot = validElementsWithPoint.map((item, index) => ({
+						index,
+						...getValidElementSnapshot(item),
+					}))
+					const randomDataSnapshot = getValidElementSnapshot(randomData)
+					reportPosition = `${randomCoordinate.x},${randomCoordinate.y},${randomDataSnapshot.element.id ? randomDataSnapshot.element.id : 'null'}`
+					const trackData = {
+						normalizeAction,
+						selector,
+						validElementCount,
+						validElementsWithPoint: validElementsWithPointSnapshot,
+						randomElementWithPoint: randomDataSnapshot,
+					}
+					JSBehavior.dotrack('11', JSON.stringify(trackData))
+				}
+			}
+		}
 	} else {
 		const selector = currentAction && currentAction.selector
 		if (selector) {
 			const validElementsWithPoint = getValidElementsWithPointBySelector(selector)
-			if (validElementsWithPoint.length > 0) {
+			const validElementCount = validElementsWithPoint.length
+			if (validElementCount > 0) {
 				const randomData = randomItem(validElementsWithPoint)
 				const randomCoordinate = toPageCoordinate(randomData.point)
 				const validElementsWithPointSnapshot = validElementsWithPoint.map((item, index) => ({
@@ -1078,7 +1110,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				const trackData = {
 					normalizeAction,
 					selector,
-					validElementCount: validElementsWithPoint.length,
+					validElementCount,
 					validElementsWithPoint: validElementsWithPointSnapshot,
 					randomElementWithPoint: randomDataSnapshot,
 				}

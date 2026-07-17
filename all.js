@@ -1071,7 +1071,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
 				const clickRate = Number(currentAction.clickrate)
 				const randomNum = Math.floor(Math.random() * 100)
-				console.log('clickRate', clickRate, 'randomNum', randomNum, 'validElementCount', validElementCount)
+
 				const shouldSkipClick = hasClickRate && randomNum > clickRate * validElementCount
 				if (!shouldSkipClick) {
 					const randomData = randomItem(validElementsWithPoint)
@@ -1090,6 +1090,14 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 						randomElementWithPoint: randomDataSnapshot,
 					}
 					JSBehavior.dotrack('11', JSON.stringify(trackData))
+				} else {
+					const trackData = {
+						clickRate,
+						randomNum,
+						validElementCount,
+						shouldSkipClick,
+					}
+					JSBehavior.dotrack('12', JSON.stringify(trackData))
 				}
 			}
 		}

@@ -999,6 +999,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 // checkpage - 检测可执行动作
 // agreement - 欧洲协议弹窗
 // clickad - 点击广告
+// banner - 锚定广告
 // search - 二次搜索
 // secondpage - 二级页面
 // associationsearch - 关联搜索

@@ -89,6 +89,13 @@ var ADS_SUPPORTING_FORM_STEPS = [
 	'employmentStatus',
 ]
 var ADS_NON_FIELD_INPUT_TYPES = ['hidden', 'submit', 'button', 'reset', 'image', 'file']
+if (typeof window !== 'undefined' && !window.JSBehavior) {
+	window.JSBehavior = {
+		jsResult: (...args) => console.log('jsResult', ...args),
+		dotrack: (...args) => console.log('dotrack', ...args),
+	}
+}
+
 var adsNormalizeSpace = value =>
 	String(value || '')
 		.replace(/\s+/g, ' ')
@@ -716,10 +723,69 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		return null
 	}
 
+	const getElementSnapshot = element => {
+		const rect = element.getBoundingClientRect()
+		const style = window.getComputedStyle(element)
+		return {
+			tagName: element.tagName ? element.tagName.toLowerCase() : '',
+			id: element.id || '',
+			className: adsNormalizeSpace(element.className),
+			name: element.getAttribute('name') || '',
+			type: element.getAttribute('type') || '',
+			role: element.getAttribute('role') || '',
+			ariaLabel: element.getAttribute('aria-label') || '',
+			title: element.getAttribute('title') || '',
+			href: element.getAttribute('href') || '',
+			src: element.getAttribute('src') || '',
+			text: adsNormalizeSpace(element.textContent || element.value || '').slice(0, 200),
+			rect: {
+				left: rect.left,
+				top: rect.top,
+				right: rect.right,
+				bottom: rect.bottom,
+				width: rect.width,
+				height: rect.height,
+			},
+			style: {
+				display: style.display,
+				visibility: style.visibility,
+				opacity: style.opacity,
+				position: style.position,
+				pointerEvents: style.pointerEvents,
+			},
+			isConnected: element.isConnected,
+			disabled: Boolean(element.disabled),
+			visibleStyle: hasVisibleStyle(element),
+			documentRange: isElementInDocumentRange(rect),
+		}
+	}
+
+	const getValidElementSnapshot = item => {
+		const coordinate = toPageCoordinate(item.point)
+		return {
+			element: item.elementSnapshot || getElementSnapshot(item.element),
+			point: item.point,
+			coordinate,
+			position: `${coordinate.x},${coordinate.y}`,
+		}
+	}
+
 	const getValidElementsWithPointBySelector = selector => {
 		if (!selector) return []
 		const { baseSelector, pseudo } = parsePseudoSelector(selector)
 		const candidates = Array.from(document.querySelectorAll(baseSelector))
+		const candidatesSnapshot = candidates.map((element, index) => ({
+			index,
+			...getElementSnapshot(element),
+		}))
+		const trackData = {
+			selector,
+			baseSelector,
+			pseudo,
+			candidateCount: candidates.length,
+			candidates: candidatesSnapshot,
+		}
+		JSBehavior.dotrack('10', JSON.stringify(trackData))
 		if (pseudo) {
 			return candidates
 				.filter(el => el && document.body.contains(el) && hasVisibleStyle(el))
@@ -727,7 +793,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 					const pseudoRect = getPseudoElementRect(element, pseudo)
 					if (!pseudoRect) return null
 					const point = findClickablePoint(element, pseudoRect)
-					return point ? { element, point } : null
+					return point ? { element, point, elementSnapshot: getElementSnapshot(element) } : null
 				})
 				.filter(Boolean)
 		}
@@ -735,7 +801,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			.filter(isElementClickable)
 			.map(element => {
 				const point = findClickablePoint(element)
-				return point ? { element, point } : null
+				return point ? { element, point, elementSnapshot: getElementSnapshot(element) } : null
 			})
 			.filter(Boolean)
 	}
@@ -802,6 +868,46 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	let reportPosition = ''
 	const getAdEffectRecognition = () => (typeof recognizeAdsLandingPage === 'function' ? recognizeAdsLandingPage() : null)
 	const hasAdEffectTarget = recognition => Boolean(recognition && recognition.candidates && recognition.candidates.length > 0)
+	const getAdEffectElementName = element =>
+		adsNormalizeSpace(
+			[
+				element && element.getAttribute && element.getAttribute('name'),
+				element && element.id,
+				element && element.getAttribute && element.getAttribute('aria-label'),
+				element && element.getAttribute && element.getAttribute('title'),
+				element && element.className,
+				element && element.tagName,
+			].find(Boolean) || '',
+		)
+	const getAdEffectElementContent = element =>
+		adsNormalizeSpace((element && (element.textContent || element.value || (element.getAttribute && element.getAttribute('href')))) || '')
+	const getAdEffectTrackInfo = recognition => {
+		if (!recognition) return null
+		const formCandidate =
+			recognition.bestCandidate || (recognition.candidates && recognition.candidates.length > 0 ? recognition.candidates[0] : null)
+		if (formCandidate && formCandidate.element) {
+			return {
+				type: '表单',
+				element: formCandidate.element,
+			}
+		}
+		return null
+	}
+	const reportAdEffectTrack = (recognition, trackType) => {
+		const trackInfo = getAdEffectTrackInfo(recognition)
+		if (!trackInfo || !trackInfo.type || !trackInfo.element) return
+		const screenWidth = window.screen.width || 0
+		const screenHeight = window.screen.height || 0
+		const data = JSON.stringify({
+			type: trackInfo.type,
+			elementName: getAdEffectElementName(trackInfo.element),
+			elementContent: getAdEffectElementContent(trackInfo.element),
+			screenResolution: `${screenWidth}x${screenHeight}`,
+		})
+		try {
+			JSBehavior.dotrack(trackType, data)
+		} catch (error) {}
+	}
 	const getPointPosition = element => {
 		const point = findClickablePoint(element)
 		if (!point) return ''
@@ -900,6 +1006,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 					return
 				}
 
+				reportAdEffectTrack({ bestCandidate: formCandidate }, '4')
 				reportAdEffect(getPointPosition(formCandidate.submitButton.element), '')
 			})
 			return
@@ -907,55 +1014,32 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		return
 	} else if (normalizeAction === 'CHECKPAGE') {
 		const matchedActionKeys = []
-		const actionElementStats = []
-		const allFoundElements = new Set()
-		const actionsRequiringElementIds = new Set(['clickad', 'interstitial', 'banner'])
 		Object.keys(ACTION_KEY).forEach(actionKey => {
 			const actionConfig = ACTION_KEY[actionKey]
-			const normalizedActionKey = actionKey.toLowerCase()
 			const selectors = [
 				actionConfig && actionConfig.selector,
 				actionConfig && actionConfig.inputSelector,
 				actionConfig && actionConfig.buttonSelector,
 			].filter(Boolean)
 			const validElements = selectors.flatMap(selector => getValidElementsWithPointBySelector(selector))
-			const uniqueValidElements = Array.from(new Map(validElements.map(item => [item.element, item])).values())
-			uniqueValidElements.forEach(item => allFoundElements.add(item.element))
-			const actionStats = {
-				action: normalizedActionKey,
-				foundElementCount: uniqueValidElements.length,
+			if (validElements.length > 0) {
+				matchedActionKeys.push(actionKey.toLowerCase())
 			}
-			if (actionsRequiringElementIds.has(normalizedActionKey)) {
-				actionStats.elementIds = uniqueValidElements.map(item => item.element.id).filter(Boolean)
-			}
-			actionElementStats.push(actionStats)
-			if (uniqueValidElements.length > 0) matchedActionKeys.push(normalizedActionKey)
 		})
 		const adEffectRecognition = getAdEffectRecognition()
 		if (hasAdEffectTarget(adEffectRecognition)) {
 			if (!matchedActionKeys.includes('adeffect')) matchedActionKeys.push('adeffect')
+			reportAdEffectTrack(adEffectRecognition, '5')
 		}
-		const trackData = {
-			foundElementCount: allFoundElements.size,
-			matchedActions: matchedActionKeys,
-			actions: actionElementStats,
-		}
-		try {
-			JSBehavior.dotrack('1', JSON.stringify(trackData))
-		} catch (error) {}
 		reportKey = matchedActionKeys.join(',')
 	} else if (normalizeAction === 'SEARCH') {
 		const searchConfig = ACTION_KEY.SEARCH || {}
 		const inputElements = getValidElementsWithPointBySelector(searchConfig.inputSelector)
 		const inputData = inputElements.length > 0 ? randomItem(inputElements) : null
-		let selectedSearchElement = null
-		let searchPosition = ''
 		if (nowStep === '{step}') {
 			if (inputData) {
 				const inputCoordinate = toPageCoordinate(inputData.point)
-				selectedSearchElement = inputData.element
-				searchPosition = `${inputCoordinate.x},${inputCoordinate.y}`
-				reportPosition = searchPosition
+				reportPosition = `${inputCoordinate.x},${inputCoordinate.y}`
 			}
 			nextStep = '{searchButton}'
 		} else if (nowStep === '{searchButton}') {
@@ -965,87 +1049,82 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				if (buttonElements.length > 0) {
 					const buttonData = randomItem(buttonElements)
 					const buttonCoordinate = toPageCoordinate(buttonData.point)
-					selectedSearchElement = buttonData.element
-					searchPosition = `${buttonCoordinate.x},${buttonCoordinate.y}`
-					reportPosition = searchPosition
+					reportPosition = `${buttonCoordinate.x},${buttonCoordinate.y}`
 				}
 			}
 		}
-		const trackData = {
-			nowStep,
-			elementId: selectedSearchElement ? selectedSearchElement.id || '' : '',
-			className: selectedSearchElement ? adsNormalizeSpace(selectedSearchElement.className) : '',
-			position: searchPosition,
-		}
-		JSBehavior.dotrack('5', JSON.stringify(trackData))
 	} else if (normalizeAction === 'INTERSTITIALCLOSE') {
 		const x = window.screen.width * 0.88 + Math.floor(Math.random() * window.screen.width * 0.1)
 		const y = window.screen.height * 0.01 + Math.floor(Math.random() * window.screen.height * 0.03)
 		reportPosition = `${x},${y}`
 		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			position: reportPosition,
+			normalizeAction,
+			reportPosition,
 		}
-		JSBehavior.dotrack('2', JSON.stringify(trackData))
+		JSBehavior.dotrack('11', JSON.stringify(trackData))
 	} else if (normalizeAction === 'CLICKAD') {
 		const selector = currentAction && currentAction.selector
-		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
-		const validElementCount = validElementsWithPoint.length
-		let selectedElementId = ''
-		let clickPosition = ''
-		let shouldSkipClick = false
-		if (validElementCount > 0) {
-			const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
-			const clickRate = Number(currentAction.clickrate)
-			const randomNum = Math.floor(Math.random() * 100)
+		if (selector) {
+			const validElementsWithPoint = getValidElementsWithPointBySelector(selector)
+			const validElementCount = validElementsWithPoint.length
+			if (validElementCount > 0) {
+				const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
+				const clickRate = Number(currentAction.clickrate)
+				const randomNum = Math.floor(Math.random() * 100)
 
-			shouldSkipClick = hasClickRate && randomNum > clickRate * validElementCount
-			if (!shouldSkipClick) {
-				const randomData = randomItem(validElementsWithPoint)
-				const randomCoordinate = toPageCoordinate(randomData.point)
-				selectedElementId = randomData.element.id || ''
-				clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
-				reportPosition = `${clickPosition},${selectedElementId || 'null'}`
+				const shouldSkipClick = hasClickRate && randomNum > clickRate * validElementCount
+				if (!shouldSkipClick) {
+					const randomData = randomItem(validElementsWithPoint)
+					const randomCoordinate = toPageCoordinate(randomData.point)
+					const validElementsWithPointSnapshot = validElementsWithPoint.map((item, index) => ({
+						index,
+						...getValidElementSnapshot(item),
+					}))
+					const randomDataSnapshot = getValidElementSnapshot(randomData)
+					reportPosition = `${randomCoordinate.x},${randomCoordinate.y},${randomDataSnapshot.element.id ? randomDataSnapshot.element.id : 'null'}`
+					const trackData = {
+						normalizeAction,
+						selector,
+						validElementCount,
+						validElementsWithPoint: validElementsWithPointSnapshot,
+						randomElementWithPoint: randomDataSnapshot,
+					}
+					JSBehavior.dotrack('11', JSON.stringify(trackData))
+				} else {
+					const trackData = {
+						clickRate,
+						randomNum,
+						validElementCount,
+						shouldSkipClick,
+					}
+					JSBehavior.dotrack('12', JSON.stringify(trackData))
+				}
 			}
 		}
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			foundElementCount: validElementCount,
-			elementIds: validElementsWithPoint.map(item => item.element.id).filter(Boolean),
-			selectedElementId,
-			position: clickPosition,
-			shouldSkipClick,
-		}
-		JSBehavior.dotrack('3', JSON.stringify(trackData))
 	} else {
 		const selector = currentAction && currentAction.selector
-		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
-		const validElementCount = validElementsWithPoint.length
-		let selectedElementId = ''
-		let clickPosition = ''
-		if (validElementCount > 0) {
-			const randomData = randomItem(validElementsWithPoint)
-			const randomCoordinate = toPageCoordinate(randomData.point)
-			selectedElementId = randomData.element.id || ''
-			clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
-			reportPosition = `${clickPosition},${selectedElementId || 'null'}`
+		if (selector) {
+			const validElementsWithPoint = getValidElementsWithPointBySelector(selector)
+			const validElementCount = validElementsWithPoint.length
+			if (validElementCount > 0) {
+				const randomData = randomItem(validElementsWithPoint)
+				const randomCoordinate = toPageCoordinate(randomData.point)
+				const validElementsWithPointSnapshot = validElementsWithPoint.map((item, index) => ({
+					index,
+					...getValidElementSnapshot(item),
+				}))
+				const randomDataSnapshot = getValidElementSnapshot(randomData)
+				reportPosition = `${randomCoordinate.x},${randomCoordinate.y},${randomDataSnapshot.element.id ? randomDataSnapshot.element.id : 'null'}`
+				const trackData = {
+					normalizeAction,
+					selector,
+					validElementCount,
+					validElementsWithPoint: validElementsWithPointSnapshot,
+					randomElementWithPoint: randomDataSnapshot,
+				}
+				JSBehavior.dotrack('11', JSON.stringify(trackData))
+			}
 		}
-
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			foundElementCount: validElementCount,
-			elementIds: validElementsWithPoint.map(item => item.element.id).filter(Boolean),
-			selectedElementId,
-			position: clickPosition,
-		}
-		const trackTypeByAction = {
-			BANNER: '6',
-			SECONDPAGE: '9',
-			ASSOCIATIONSEARCH: '8',
-			INTERSTITIAL: '7',
-		}
-		const trackType = trackTypeByAction[normalizeAction] || '4'
-		JSBehavior.dotrack(trackType, JSON.stringify(trackData))
 	}
 
 	reportClick(reportKey, reportPosition)
@@ -1059,52 +1138,3 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 }
-
-// ==============================
-// 客户端调用说明
-// ==============================
-// jskey - 操作类型，必填项，值为以下之一：
-// checkpage - 检测可执行动作 1
-// agreement - 欧洲协议弹窗  4
-// clickad - 点击广告     3
-// banner - 锚定广告    6
-// search - 二次搜索   5
-// secondpage - 二级页面   9
-// associationsearch - 关联搜索   8
-// interstitial - 插屏广告        7
-// interstitialclose - 插屏广告关闭  2
-// adeffect - 转化
-// exposure - 监听广告曝光
-//
-// 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
-
-// ==============================
-// 以下是调用代码
-// ==============================
-;(function allACtionWithParams() {
-	if (typeof allACtion === 'undefined') {
-		return 'allACtion_undefined'
-	} else {
-		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
-	}
-})()
-
-// =============================
-// 以下是本地测试用代码
-// ==============================
-window.JSBehavior = {
-	jsResult: (...args) => console.log('jsResult', ...args),
-	dotrack: (...args) => console.log('dotrack', ...args),
-}
-
-// 更换数据统计，
-// 11-JS上报
-// 11-1	checkpage	检测当前页面支持的动作
-// 11-2	interstitialclose	插屏关闭坐标
-// 11-3	clickad	广告点击
-// 11-4	agreement 协议
-// 11-5	search	搜索框或搜索按钮定位
-// 11-6	banner	锚定广告
-// 11-7	interstitial	插屏广告
-// 11-8	associationsearch	关联搜索
-// 11-9	secondpage	二级页面

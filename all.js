@@ -564,6 +564,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	} catch (error) {}
 	ACTION_KEY['ADEFFECT'] = JSON.parse(ACTION_CONFIG)['ADEFFECT']
 	ACTION_KEY['INTERSTITIALCLOSE'] = JSON.parse(ACTION_CONFIG)['INTERSTITIALCLOSE']
+	ACTION_KEY['EXPOSURE']['selector'] = ACTION_KEY['CLICKAD']['selector'] || null
 	const normalizeAction = String(jskey || '')
 		.trim()
 		.replace(/[\s_-]+/g, '')
@@ -879,8 +880,14 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			return
 		}
 	}
-
-	if (normalizeAction === 'ADEFFECT') {
+	if (normalizeAction === 'EXPOSURE') {
+		//开始监听广告曝光
+		const selector = currentAction && currentAction.selector
+		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
+		if (validElementsWithPoint.length > 0) {
+			// 监听曝光逻辑
+		}
+	} else if (normalizeAction === 'ADEFFECT') {
 		const recognition = getAdEffectRecognition()
 		const formCandidate = findAdEffectFormCandidate(recognition, behaviorsId)
 

@@ -544,6 +544,281 @@ var getAdEffectPerson = (behaviorsId, countryCode) => {
 		})
 }
 
+var startAdExposureMonitor = selector => {
+	const EXPOSURE_RATIO = 0.5
+	const EXPOSURE_DURATION_MS = 1000
+	const SCROLL_STOP_DELAY_MS = 200
+	const baseSelector = String(selector || '')
+		.replace(/::(?:before|after|first-line|first-letter|placeholder|marker)/gi, '')
+		.trim()
+	if (!baseSelector || typeof window.IntersectionObserver !== 'function') return null
+
+	const currentMonitor = window.__adExposureMonitor
+	if (currentMonitor && !currentMonitor.stopped && currentMonitor.selector === baseSelector) {
+		currentMonitor.refresh()
+		return currentMonitor
+	}
+	if (currentMonitor && typeof currentMonitor.stop === 'function') currentMonitor.stop()
+
+	const elementStateMap = new WeakMap()
+	const elementStates = new Set()
+	const listenerOptions = { capture: true, passive: true }
+	const performanceNow = () => (window.performance && typeof window.performance.now === 'function' ? window.performance.now() : Date.now())
+	let adSequence = 0
+	let isScrolling = true
+	let isPageVisible = document.visibilityState !== 'hidden'
+	let lastScrollAt = performanceNow()
+	let scrollStopTimer = null
+	let refreshTimer = null
+	let stopped = false
+	const monitorSessionId = `exposure_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+
+	const hasExposureVisibleStyle = element => {
+		let current = element
+		while (current && current !== document.documentElement) {
+			const style = window.getComputedStyle(current)
+			if (style.display === 'none') return false
+			if (style.visibility === 'hidden' || style.visibility === 'collapse') return false
+			if (Number(style.opacity) <= 0) return false
+			current = current.parentElement
+		}
+		return true
+	}
+
+	const clearExposureTimer = state => {
+		if (state.timerId !== null) window.clearTimeout(state.timerId)
+		state.timerId = null
+		state.visibleStartedAt = null
+		state.visibleStartedPerformanceAt = null
+	}
+
+	const canCountExposure = state =>
+		!stopped &&
+		!state.hasExposed &&
+		!isScrolling &&
+		isPageVisible &&
+		state.element.isConnected &&
+		state.isIntersecting &&
+		state.intersectionRatio > EXPOSURE_RATIO &&
+		hasExposureVisibleStyle(state.element)
+
+	const reportExposure = state => {
+		const exposedAt = Date.now()
+		const duration = Math.max(0, performanceNow() - state.visibleStartedPerformanceAt)
+		state.hasExposed = true
+		state.exposedAt = exposedAt
+		state.timerId = null
+		const element = state.element
+		const trackData = {
+			action: 'exposure',
+			event: 'qualified',
+			isExposed: true,
+			monitorSessionId,
+			adId: state.adId,
+			adBusinessId:
+				element.getAttribute('data-ad-id') || element.getAttribute('data-ad-slot') || element.getAttribute('data-ad-unit') || '',
+			elementId: element.id || '',
+			tagName: String(element.tagName || '').toLowerCase(),
+			className: adsNormalizeSpace(element.getAttribute('class') || ''),
+			selector: baseSelector,
+			intersectionRatio: Math.round(state.intersectionRatio * 10000) / 10000,
+			staticVisibleStartedAt: state.visibleStartedAt,
+			exposedAt,
+			staticVisibleDurationMs: Math.round(duration),
+		}
+		try {
+			JSBehavior.dotrack('20', JSON.stringify(trackData))
+		} catch (error) {}
+	}
+
+	const validateExposureTimer = state => {
+		state.timerId = null
+		if (!canCountExposure(state)) {
+			clearExposureTimer(state)
+			return
+		}
+		const duration = performanceNow() - state.visibleStartedPerformanceAt
+		if (duration >= EXPOSURE_DURATION_MS) {
+			reportExposure(state)
+			return
+		}
+		state.timerId = window.setTimeout(() => validateExposureTimer(state), EXPOSURE_DURATION_MS - duration)
+	}
+
+	const startExposureTimer = state => {
+		if (!canCountExposure(state) || state.timerId !== null || state.visibleStartedPerformanceAt !== null) return
+		state.visibleStartedAt = Date.now()
+		state.visibleStartedPerformanceAt = performanceNow()
+		state.timerId = window.setTimeout(() => validateExposureTimer(state), EXPOSURE_DURATION_MS)
+	}
+
+	const resetPendingExposureTimers = () => {
+		elementStates.forEach(state => {
+			if (!state.hasExposed) clearExposureTimer(state)
+		})
+	}
+
+	const startVisibleExposureTimers = () => {
+		if (stopped || isScrolling || !isPageVisible) return
+		elementStates.forEach(startExposureTimer)
+	}
+
+	const finishScrolling = force => {
+		if (stopped) return
+		const idleDuration = performanceNow() - lastScrollAt
+		if (!force && idleDuration < SCROLL_STOP_DELAY_MS) {
+			scrollStopTimer = window.setTimeout(() => finishScrolling(false), SCROLL_STOP_DELAY_MS - idleDuration)
+			return
+		}
+		if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
+		scrollStopTimer = null
+		isScrolling = false
+		startVisibleExposureTimers()
+	}
+
+	const scheduleScrollStop = () => {
+		if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
+		scrollStopTimer = window.setTimeout(() => finishScrolling(false), SCROLL_STOP_DELAY_MS)
+	}
+
+	const handleScroll = () => {
+		if (stopped) return
+		lastScrollAt = performanceNow()
+		isScrolling = true
+		resetPendingExposureTimers()
+		scheduleScrollStop()
+	}
+
+	const handleScrollEnd = () => {
+		if (stopped) return
+		lastScrollAt = performanceNow()
+		finishScrolling(true)
+	}
+
+	const observer = new IntersectionObserver(
+		entries => {
+			entries.forEach(entry => {
+				const state = elementStateMap.get(entry.target)
+				if (!state) return
+				state.isIntersecting = entry.isIntersecting
+				state.intersectionRatio = entry.intersectionRatio || 0
+				if (!canCountExposure(state)) {
+					if (!state.hasExposed) clearExposureTimer(state)
+					return
+				}
+				startExposureTimer(state)
+			})
+		},
+		{ root: null, rootMargin: '0px', threshold: [0, EXPOSURE_RATIO, 0.500001, 1] },
+	)
+
+	const observeElement = element => {
+		if (!element || elementStateMap.has(element)) return
+		const state = {
+			adId: `ad_${++adSequence}`,
+			element,
+			intersectionRatio: 0,
+			isIntersecting: false,
+			visibleStartedAt: null,
+			visibleStartedPerformanceAt: null,
+			timerId: null,
+			hasExposed: false,
+			exposedAt: null,
+		}
+		elementStateMap.set(element, state)
+		elementStates.add(state)
+		observer.observe(element)
+	}
+
+	const refreshElements = () => {
+		if (stopped) return
+		let matchedElements = []
+		try {
+			matchedElements = Array.from(document.querySelectorAll(baseSelector))
+		} catch (error) {
+			return
+		}
+		const matchedSet = new Set(matchedElements)
+		matchedElements.forEach(observeElement)
+		elementStates.forEach(state => {
+			if (state.element.isConnected && matchedSet.has(state.element)) return
+			clearExposureTimer(state)
+			observer.unobserve(state.element)
+			elementStateMap.delete(state.element)
+			elementStates.delete(state)
+		})
+		startVisibleExposureTimers()
+	}
+
+	const scheduleRefresh = () => {
+		if (refreshTimer !== null) return
+		refreshTimer = window.setTimeout(() => {
+			refreshTimer = null
+			refreshElements()
+		}, 50)
+	}
+
+	const mutationObserver = new MutationObserver(scheduleRefresh)
+	mutationObserver.observe(document.documentElement, {
+		childList: true,
+		subtree: true,
+		attributes: true,
+		attributeFilter: ['id', 'class', 'style', 'hidden', 'data-ad-id', 'data-ad-slot', 'data-ad-unit'],
+	})
+
+	const handleVisibilityChange = () => {
+		isPageVisible = document.visibilityState !== 'hidden'
+		if (!isPageVisible) {
+			isScrolling = true
+			resetPendingExposureTimers()
+			if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
+			scrollStopTimer = null
+			return
+		}
+		isScrolling = true
+		lastScrollAt = performanceNow()
+		resetPendingExposureTimers()
+		scheduleScrollStop()
+	}
+
+	const stop = () => {
+		if (stopped) return
+		stopped = true
+		monitor.stopped = true
+		observer.disconnect()
+		mutationObserver.disconnect()
+		resetPendingExposureTimers()
+		if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
+		if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+		document.removeEventListener('scroll', handleScroll, true)
+		document.removeEventListener('scrollend', handleScrollEnd, true)
+		document.removeEventListener('wheel', handleScroll, true)
+		document.removeEventListener('touchmove', handleScroll, true)
+		document.removeEventListener('visibilitychange', handleVisibilityChange)
+		window.removeEventListener('pagehide', stop)
+		if (window.visualViewport) window.visualViewport.removeEventListener('scroll', handleScroll)
+	}
+
+	const monitor = {
+		selector: baseSelector,
+		monitorSessionId,
+		stopped: false,
+		refresh: refreshElements,
+		stop,
+	}
+	window.__adExposureMonitor = monitor
+	document.addEventListener('scroll', handleScroll, listenerOptions)
+	document.addEventListener('scrollend', handleScrollEnd, listenerOptions)
+	document.addEventListener('wheel', handleScroll, listenerOptions)
+	document.addEventListener('touchmove', handleScroll, listenerOptions)
+	document.addEventListener('visibilitychange', handleVisibilityChange)
+	window.addEventListener('pagehide', stop)
+	if (window.visualViewport) window.visualViewport.addEventListener('scroll', handleScroll, { passive: true })
+	refreshElements()
+	scheduleScrollStop()
+	return monitor
+}
+
 function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
 	const nowStep = step || '{step}'
 	let nextStep = ''
@@ -564,7 +839,9 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	} catch (error) {}
 	ACTION_KEY['ADEFFECT'] = JSON.parse(ACTION_CONFIG)['ADEFFECT']
 	ACTION_KEY['INTERSTITIALCLOSE'] = JSON.parse(ACTION_CONFIG)['INTERSTITIALCLOSE']
-	ACTION_KEY['EXPOSURE']['selector'] = ACTION_KEY['CLICKAD']['selector'] || null
+	const clickAdSelector = ACTION_KEY['CLICKAD'] && ACTION_KEY['CLICKAD']['selector']
+	ACTION_KEY['EXPOSURE'] = ACTION_KEY['EXPOSURE'] || {}
+	ACTION_KEY['EXPOSURE']['selector'] = clickAdSelector || ACTION_KEY['EXPOSURE']['selector'] || null
 	const normalizeAction = String(jskey || '')
 		.trim()
 		.replace(/[\s_-]+/g, '')
@@ -872,7 +1149,10 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	}
 
 	const shouldSkipInterstitialGuard =
-		normalizeAction === 'CHECKPAGE' || normalizeAction === 'INTERSTITIAL' || normalizeAction === 'INTERSTITIALCLOSE'
+		normalizeAction === 'CHECKPAGE' ||
+		normalizeAction === 'INTERSTITIAL' ||
+		normalizeAction === 'INTERSTITIALCLOSE' ||
+		normalizeAction === 'EXPOSURE'
 	if (!shouldSkipInterstitialGuard && ACTION_KEY.INTERSTITIAL && ACTION_KEY.INTERSTITIAL.selector) {
 		const interstitialElements = getValidElementsWithPointBySelector(ACTION_KEY.INTERSTITIAL.selector)
 		if (interstitialElements.length > 0) {
@@ -881,12 +1161,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 	if (normalizeAction === 'EXPOSURE') {
-		//开始监听广告曝光
 		const selector = currentAction && currentAction.selector
-		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
-		if (validElementsWithPoint.length > 0) {
-			// 监听曝光逻辑
-		}
+		startAdExposureMonitor(selector)
 	} else if (normalizeAction === 'ADEFFECT') {
 		const recognition = getAdEffectRecognition()
 		const formCandidate = findAdEffectFormCandidate(recognition, behaviorsId)
@@ -986,8 +1262,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 		JSBehavior.dotrack('5', JSON.stringify(trackData))
 	} else if (normalizeAction === 'INTERSTITIALCLOSE') {
-		const x = window.screen.width * 0.88 + Math.floor(Math.random() * window.screen.width * 0.1)
-		const y = window.screen.height * 0.01 + Math.floor(Math.random() * window.screen.height * 0.03)
+		const x = window.innerWidth - 10 - 48 + Math.random() * 48
+		const y = 10 + Math.random() * 24
 		reportPosition = `${x},${y}`
 		const trackData = {
 			action: normalizeAction.toLowerCase(),
@@ -1115,3 +1391,4 @@ window.JSBehavior = {
 // 11-7	interstitial	插屏广告
 // 11-8	associationsearch	关联搜索
 // 11-9	secondpage	二级页面
+// 11-20	exposure	广告曝光

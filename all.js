@@ -548,6 +548,8 @@ var startAdExposureMonitor = selector => {
 	const EXPOSURE_RATIO = 0.5
 	const EXPOSURE_DURATION_MS = 1000
 	const SCROLL_STOP_DELAY_MS = 200
+	const ELEMENT_SEARCH_RETRY_DELAY_MS = 2000
+	const MAX_ELEMENT_SEARCH_ATTEMPTS = 3
 	const baseSelector = String(selector || '')
 		.replace(/::(?:before|after|first-line|first-letter|placeholder|marker)/gi, '')
 		.trim()
@@ -570,6 +572,7 @@ var startAdExposureMonitor = selector => {
 	let lastScrollAt = performanceNow()
 	let scrollStopTimer = null
 	let refreshTimer = null
+	let elementSearchRetryTimer = null
 	let stopped = false
 	const monitorSessionId = `exposure_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 
@@ -731,12 +734,16 @@ var startAdExposureMonitor = selector => {
 	}
 
 	const refreshElements = () => {
-		if (stopped) return
+		if (stopped) return 0
 		let matchedElements = []
 		try {
 			matchedElements = Array.from(document.querySelectorAll(baseSelector))
 		} catch (error) {
-			return
+			return 0
+		}
+		if (matchedElements.length > 0 && elementSearchRetryTimer !== null) {
+			window.clearTimeout(elementSearchRetryTimer)
+			elementSearchRetryTimer = null
 		}
 		const matchedSet = new Set(matchedElements)
 		matchedElements.forEach(observeElement)
@@ -748,6 +755,24 @@ var startAdExposureMonitor = selector => {
 			elementStates.delete(state)
 		})
 		startVisibleExposureTimers()
+		return matchedElements.length
+	}
+
+	const findElementsWithRetry = (attempt = 1) => {
+		if (stopped) return
+		elementSearchRetryTimer = null
+		const matchedElementCount = refreshElements()
+		if (matchedElementCount > 0 || attempt >= MAX_ELEMENT_SEARCH_ATTEMPTS) return
+		elementSearchRetryTimer = window.setTimeout(
+			() => findElementsWithRetry(attempt + 1),
+			ELEMENT_SEARCH_RETRY_DELAY_MS,
+		)
+	}
+
+	const startElementSearch = () => {
+		if (elementSearchRetryTimer !== null) window.clearTimeout(elementSearchRetryTimer)
+		elementSearchRetryTimer = null
+		findElementsWithRetry()
 	}
 
 	const scheduleRefresh = () => {
@@ -790,6 +815,7 @@ var startAdExposureMonitor = selector => {
 		resetPendingExposureTimers()
 		if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
 		if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+		if (elementSearchRetryTimer !== null) window.clearTimeout(elementSearchRetryTimer)
 		document.removeEventListener('scroll', handleScroll, true)
 		document.removeEventListener('scrollend', handleScrollEnd, true)
 		document.removeEventListener('wheel', handleScroll, true)
@@ -803,7 +829,7 @@ var startAdExposureMonitor = selector => {
 		selector: baseSelector,
 		monitorSessionId,
 		stopped: false,
-		refresh: refreshElements,
+		refresh: startElementSearch,
 		stop,
 	}
 	window.__adExposureMonitor = monitor
@@ -814,7 +840,7 @@ var startAdExposureMonitor = selector => {
 	document.addEventListener('visibilitychange', handleVisibilityChange)
 	window.addEventListener('pagehide', stop)
 	if (window.visualViewport) window.visualViewport.addEventListener('scroll', handleScroll, { passive: true })
-	refreshElements()
+	startElementSearch()
 	scheduleScrollStop()
 	return monitor
 }
@@ -1160,10 +1186,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			return
 		}
 	}
-	if (normalizeAction === 'EXPOSURE') {
-		const selector = currentAction && currentAction.selector
-		startAdExposureMonitor(selector)
-	} else if (normalizeAction === 'ADEFFECT') {
+	if (normalizeAction === 'ADEFFECT') {
 		const recognition = getAdEffectRecognition()
 		const formCandidate = findAdEffectFormCandidate(recognition, behaviorsId)
 
@@ -1189,6 +1212,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 		return
 	} else if (normalizeAction === 'CHECKPAGE') {
+		const exposureConfig = ACTION_KEY.EXPOSURE || {}
+		startAdExposureMonitor(exposureConfig.selector)
 		const matchedActionKeys = []
 		const actionElementStats = []
 		const allFoundElements = new Set()

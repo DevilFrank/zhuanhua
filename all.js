@@ -880,7 +880,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 
 	const randomItem = list => list[Math.floor(Math.random() * list.length)]
 	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
-	const isCurrentSlide = () => currentSlide === true || String(currentSlide).toLowerCase() === 'true'
+	const isSlideEnabled = slide => slide === true || String(slide).toLowerCase() === 'true'
+	const isCurrentSlide = () => isSlideEnabled(currentSlide)
 
 	const getDocumentBounds = () => {
 		const doc = document.documentElement
@@ -971,9 +972,10 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 
-	const getCandidatePoints = (element, rectOverride) => {
+	const getCandidatePoints = (element, rectOverride, slide = currentSlide) => {
 		const rect = rectOverride || element.getBoundingClientRect()
 		if (!isElementInDocumentRange(rect)) return []
+		const canSlide = isSlideEnabled(slide)
 
 		const innerLeft = rect.left + rect.width * 0.2
 		const innerRight = rect.right - rect.width * 0.2
@@ -983,8 +985,8 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		const pointLeft = clamp(innerLeft, 0, maxViewportX)
 		const pointRight = clamp(innerRight, 0, maxViewportX)
 
-		const pointTop = isCurrentSlide() ? innerTop : clamp(innerTop, 0, maxViewportY)
-		const pointBottom = isCurrentSlide() ? innerBottom : clamp(innerBottom, 0, maxViewportY)
+		const pointTop = canSlide ? innerTop : clamp(innerTop, 0, maxViewportY)
+		const pointBottom = canSlide ? innerBottom : clamp(innerBottom, 0, maxViewportY)
 		const innerWidth = pointRight - pointLeft
 		const innerHeight = pointBottom - pointTop
 		if (innerWidth <= 0 || innerHeight <= 0) return []
@@ -999,15 +1001,16 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		return points
 	}
 
-	const findClickablePoint = (element, rectOverride) => {
-		const points = getCandidatePoints(element, rectOverride)
+	const findClickablePoint = (element, rectOverride, slide = currentSlide) => {
+		const points = getCandidatePoints(element, rectOverride, slide)
 		if (points.length === 0) return null
+		const canSlide = isSlideEnabled(slide)
 		const isPointInViewport = point => point.x >= 0 && point.x <= maxViewportX && point.y >= 0 && point.y <= maxViewportY
 
 		for (let i = 0; i < points.length; i++) {
 			const point = points[i]
 			if (!isPointInViewport(point)) {
-				if (isCurrentSlide()) return point
+				if (canSlide) return point
 				continue
 			}
 			if (pointHitsElement(element, point.x, point.y)) {
@@ -1017,7 +1020,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		return null
 	}
 
-	const getValidElementsWithPointBySelector = selector => {
+	const getValidElementsWithPointBySelector = (selector, slide = currentSlide) => {
 		if (!selector) return []
 		const { baseSelector, pseudo } = parsePseudoSelector(selector)
 		const candidates = Array.from(document.querySelectorAll(baseSelector))
@@ -1027,7 +1030,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				.map(element => {
 					const pseudoRect = getPseudoElementRect(element, pseudo)
 					if (!pseudoRect) return null
-					const point = findClickablePoint(element, pseudoRect)
+					const point = findClickablePoint(element, pseudoRect, slide)
 					return point ? { element, point } : null
 				})
 				.filter(Boolean)
@@ -1035,7 +1038,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		return candidates
 			.filter(isElementClickable)
 			.map(element => {
-				const point = findClickablePoint(element)
+				const point = findClickablePoint(element, null, slide)
 				return point ? { element, point } : null
 			})
 			.filter(Boolean)
@@ -1223,7 +1226,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				actionConfig && actionConfig.inputSelector,
 				actionConfig && actionConfig.buttonSelector,
 			].filter(Boolean)
-			const validElements = selectors.flatMap(selector => getValidElementsWithPointBySelector(selector))
+			const validElements = selectors.flatMap(selector => getValidElementsWithPointBySelector(selector, actionConfig && actionConfig.slide))
 			const uniqueValidElements = Array.from(new Map(validElements.map(item => [item.element, item])).values())
 			uniqueValidElements.forEach(item => allFoundElements.add(item.element))
 			const actionStats = {

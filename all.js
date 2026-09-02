@@ -851,7 +851,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
       "slide": true
     },
     "INTERSTITIALCLOSE": {
-      "pageFinish": true,
+      "pageFinish": false,
       "slide": false
 	    }
 	  }`
@@ -1372,6 +1372,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				selectedElementId = randomData.element.id || ''
 				clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
 				reportPosition = `${clickPosition},${selectedElementId || 'null'}`
+				//在这里新增页面下滑到指定区域
 			}
 		}
 		const trackData = {

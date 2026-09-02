@@ -855,7 +855,23 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
       "slide": false
 	    }
 	  }`
-	const ACTIONSJSON = `{config}`
+	const ACTIONSJSON = `{
+    "BANNER":{
+      "selector":"div.banner-box",
+      "pageFinish": true,
+      "slide": false
+    },
+    "CLICKAD":{
+      "selector":"div#ad1",
+      "pageFinish": true,
+      "slide": true
+    },
+    "SECONDPAGE":{
+      "selector":"div.secondpage",
+      "pageFinish": true,
+      "slide": true
+    }
+  }`
 	let ACTION_KEY = {}
 	try {
 		ACTION_KEY = JSON.parse(ACTIONSJSON)
@@ -1186,20 +1202,23 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			return
 		}
 	}
+
+	console.log('ACTION_KEY:', ACTION_KEY)
 	const bannerConfig = ACTION_KEY.BANNER
 	const shouldCheckFixedBanner =
 		(normalizeAction === 'CLICKAD' || normalizeAction === 'SECONDPAGE') &&
 		bannerConfig &&
 		bannerConfig.selector &&
 		(bannerConfig.slide === false || String(bannerConfig.slide).toLowerCase() === 'false')
+	console.log('shouldCheckFixedBanner:', shouldCheckFixedBanner, 'bannerConfig:', bannerConfig)
 	if (shouldCheckFixedBanner) {
 		const largeBannerElements = getValidElementsWithPointBySelector(bannerConfig.selector, bannerConfig.slide)
 			.map(item => ({
 				element: item.element,
 				rect: item.element.getBoundingClientRect(),
 			}))
-			.filter(item => item.rect.height > 360)
-
+			.filter(item => item.rect.height > 60)
+		console.log('largeBannerElements:', largeBannerElements)
 		if (largeBannerElements.length > 0) {
 			const selectedBanner = largeBannerElements.reduce((largest, current) =>
 				current.rect.height > largest.rect.height ? current : largest,
@@ -1222,10 +1241,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				bannerPosition = distanceToTop <= distanceToBottom ? 'top' : 'bottom'
 			}
 
-			const bannerPoint =
-				bannerPosition === 'top'
-					? { x: rect.left + 30 + Math.random(), y: rect.bottom + 15 + Math.random() }
-					: { x: rect.left + 30 + Math.random(), y: rect.top - 15 + Math.random() }
+			const bannerPoint = bannerPosition === 'top' ? { x: rect.left + 30, y: rect.bottom + 12 } : { x: rect.left + 30, y: rect.top - 12 }
 			const isPointInViewport = bannerPoint.x >= 0 && bannerPoint.x <= maxViewportX && bannerPoint.y >= 0 && bannerPoint.y <= maxViewportY
 			const selectedElementId = element.id || 'null'
 			const position = isPointInViewport ? `${bannerPoint.x},${bannerPoint.y},${selectedElementId}` : `,,${selectedElementId}`
@@ -1432,53 +1448,3 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 }
-
-// ==============================
-// 客户端调用说明
-// ==============================
-// jskey - 操作类型，必填项，值为以下之一：
-// checkpage - 检测可执行动作 1
-// agreement - 欧洲协议弹窗  4
-// clickad - 点击广告     3
-// banner - 锚定广告    6
-// search - 二次搜索   5
-// secondpage - 二级页面   9
-// associationsearch - 关联搜索   8
-// interstitial - 插屏广告        7
-// interstitialclose - 插屏广告关闭  2
-// adeffect - 转化
-// exposure - 监听广告曝光
-//
-// 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
-
-// ==============================
-// 以下是调用代码
-// ==============================
-;(function allACtionWithParams() {
-	if (typeof allACtion === 'undefined') {
-		return 'allACtion_undefined'
-	} else {
-		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
-	}
-})()
-
-// =============================
-// 以下是本地测试用代码
-// ==============================
-window.JSBehavior = {
-	jsResult: (...args) => console.log('jsResult', ...args),
-	dotrack: (...args) => console.log('dotrack', ...args),
-}
-
-// 更换数据统计，
-// 11-JS上报
-// 11-1	checkpage	检测当前页面支持的动作
-// 11-2	interstitialclose	插屏关闭坐标
-// 11-3	clickad	广告点击
-// 11-4	agreement 协议
-// 11-5	search	搜索框或搜索按钮定位
-// 11-6	banner	锚定广告
-// 11-7	interstitial	插屏广告
-// 11-8	associationsearch	关联搜索
-// 11-9	secondpage	二级页面
-// 11-20	exposure	广告曝光

@@ -232,6 +232,29 @@
 				padding: 300px 0;
 				overflow: hidden;
 			}
+			.banner-box {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 240px;
+				background-color: rgba(0, 0, 0, 0.5);
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				z-index: 9999;
+			}
+			.banner-box-close {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				width: 60px;
+				height: 30px;
+				position: absolute;
+				bottom: -35px;
+				left: 0;
+				background-color: #999;
+			}
 		</style>
 	</head>
 	<body>
@@ -273,7 +296,9 @@
 			</div>
 		</div>
 		<div id="coordinates">点击任意位置显示坐标</div>
-
+		<div class="banner-box">
+			<div class="banner-box-close">x</div>
+		</div>
 		<script>
 			document.getElementById('big-div').addEventListener('click', function (e) {
 				// 获取坐标
@@ -309,6 +334,13 @@
 			for (let i = 0; i < clickElements.length; i++) {
 				clickElements[i].addEventListener('click', refreshPage)
 			}
+
+			//点击banner-box-close，banner-box的高变为120px
+			const bannerBoxClose = document.querySelector('.banner-box-close')
+			const bannerBox = document.querySelector('.banner-box')
+			bannerBoxClose.addEventListener('click', function () {
+				bannerBox.style.height = '120px'
+			})
 		</script>
 	</body>
 </html>

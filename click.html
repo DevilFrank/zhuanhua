@@ -255,6 +255,26 @@
 				left: 0;
 				background-color: #999;
 			}
+			.interstitial-box {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100vw;
+				height: 100vh;
+				background-color: rgba(255, 255, 0, 0.8);
+				z-index: 99999;
+			}
+			.interstitial-box-close {
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				width: 40px;
+				height: 40px;
+				position: absolute;
+				top: 0;
+				right: 0;
+				background-color: #999;
+			}
 		</style>
 	</head>
 	<body>
@@ -299,6 +319,9 @@
 		<div class="banner-box">
 			<div class="banner-box-close">x</div>
 		</div>
+		<div class="interstitial-box">
+			<div class="interstitial-box-close">x</div>
+		</div>
 		<script>
 			document.getElementById('big-div').addEventListener('click', function (e) {
 				// 获取坐标
@@ -340,6 +363,13 @@
 			const bannerBox = document.querySelector('.banner-box')
 			bannerBoxClose.addEventListener('click', function () {
 				bannerBox.style.height = '120px'
+			})
+
+			//点击interstitial-box-close，interstitial-box隐藏
+			const interstitialBoxClose = document.querySelector('.interstitial-box-close')
+			const interstitialBox = document.querySelector('.interstitial-box')
+			interstitialBoxClose.addEventListener('click', function () {
+				interstitialBox.style.display = 'none'
 			})
 		</script>
 	</body>

@@ -857,24 +857,24 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	  }`
 	const ACTIONSJSON = `{
   "CLICKAD": {
-    "selector": "body iframe[id^='google_ads_iframe']:not([id*='anchor'])",
+    "selector": "div.ad-box",
     "pageFinish": "true",
     "slide": "true",
     "clickrate": "10",
     "jsSlide": "true"
   },
   "SECONDPAGE": {
-    "selector": "section a.group",
+    "selector": "div.secondpage",
     "pageFinish": "true",
     "slide": "true"
   },
   "INTERSTITIAL": {
-    "selector": "html>ins[style*='100vh'] iframe[id^='google_ads_iframe']",
+    "selector": "div.interstitial-box",
     "pageFinish": "true",
     "slide": "false"
   },
   "BANNER": {
-    "selector": "body iframe[id='google_ads_iframe_/23364828183/farsea.pureglight.com_0904_dp_anchor_0']",
+    "selector": "div.banner-box",
     "pageFinish": "true",
     "slide": "false"
   }
@@ -1406,14 +1406,19 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 		JSBehavior.dotrack('5', JSON.stringify(trackData))
 	} else if (normalizeAction === 'INTERSTITIALCLOSE') {
-		const x = window.innerWidth - 10 - 48 + Math.random() * 48
-		const y = 10 + Math.random() * 24
-		reportPosition = `${x},${y}`
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			position: reportPosition,
+		const selector = ACTION_KEY['INTERSTITIAL'].selector
+		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
+		const validElementCount = validElementsWithPoint.length
+		if (validElementCount > 0) {
+			const x = window.innerWidth - 10 - 48 + Math.random() * 48
+			const y = 10 + Math.random() * 24
+			reportPosition = `${x},${y}`
+			const trackData = {
+				action: normalizeAction.toLowerCase(),
+				position: reportPosition,
+			}
+			JSBehavior.dotrack('2', JSON.stringify(trackData))
 		}
-		JSBehavior.dotrack('2', JSON.stringify(trackData))
 	} else if (normalizeAction === 'CLICKAD') {
 		const selector = currentAction && currentAction.selector
 		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []

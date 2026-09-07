@@ -1383,14 +1383,19 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 		JSBehavior.dotrack('5', JSON.stringify(trackData))
 	} else if (normalizeAction === 'INTERSTITIALCLOSE') {
-		const x = window.innerWidth - 10 - 48 + Math.random() * 48
-		const y = 10 + Math.random() * 24
-		reportPosition = `${x},${y}`
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			position: reportPosition,
+		const selector = ACTION_KEY['INTERSTITIAL'].selector
+		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
+		const validElementCount = validElementsWithPoint.length
+		if (validElementCount > 0) {
+			const x = window.innerWidth - 10 - 48 + Math.random() * 48
+			const y = 10 + Math.random() * 24
+			reportPosition = `${x},${y}`
+			const trackData = {
+				action: normalizeAction.toLowerCase(),
+				position: reportPosition,
+			}
+			JSBehavior.dotrack('2', JSON.stringify(trackData))
 		}
-		JSBehavior.dotrack('2', JSON.stringify(trackData))
 	} else if (normalizeAction === 'CLICKAD') {
 		const selector = currentAction && currentAction.selector
 		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []

@@ -882,6 +882,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
 	const isSlideEnabled = slide => slide === true || String(slide).toLowerCase() === 'true'
 	const isCurrentSlide = () => isSlideEnabled(currentSlide)
+	const isCurrentJsSlide = () => Boolean(currentAction && isSlideEnabled(currentAction.jsSlide))
 
 	const getDocumentBounds = () => {
 		const doc = document.documentElement
@@ -1100,6 +1101,43 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			x: clamp(point.x, 0, maxViewportX),
 			y: clamp(point.y + scrollTop, 0, Math.max(0, docHeight - 1)),
 		}
+	}
+
+	const scrollToPageY = (pageY, callback) => {
+		const { height: docHeight } = getDocumentBounds()
+		const maxScrollTop = Math.max(0, docHeight - viewportHeight)
+		const targetScrollTop = clamp(pageY - viewportHeight / 2, 0, maxScrollTop)
+		const requestFrame = window.requestAnimationFrame || (handler => window.setTimeout(handler, 16))
+		const startTime = Date.now()
+		let lastScrollTop = getDocumentBounds().scrollTop
+		let stableFrameCount = 0
+		let finished = false
+
+		const finish = () => {
+			if (finished) return
+			finished = true
+			callback()
+		}
+		const waitForScrollEnd = () => {
+			const currentScrollTop = getDocumentBounds().scrollTop
+			if (Math.abs(currentScrollTop - lastScrollTop) < 1) stableFrameCount += 1
+			else stableFrameCount = 0
+			lastScrollTop = currentScrollTop
+
+			const elapsed = Date.now() - startTime
+			if ((elapsed >= 150 && stableFrameCount >= 5) || elapsed >= 2000) {
+				finish()
+				return
+			}
+			requestFrame(waitForScrollEnd)
+		}
+
+		try {
+			window.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
+		} catch (error) {
+			window.scrollTo(0, targetScrollTop)
+		}
+		requestFrame(waitForScrollEnd)
 	}
 
 	let reportKey = ''
@@ -1359,6 +1397,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		const validElementCount = validElementsWithPoint.length
 		let selectedElementId = ''
 		let clickPosition = ''
+		let clickPageY = null
 		let shouldSkipClick = false
 		if (validElementCount > 0) {
 			const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
@@ -1372,7 +1411,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				selectedElementId = randomData.element.id || ''
 				clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
 				reportPosition = `${clickPosition},${selectedElementId || 'null'}`
-				//在这里新增页面下滑到指定区域
+				clickPageY = randomCoordinate.y
 			}
 		}
 		const trackData = {
@@ -1384,6 +1423,15 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			shouldSkipClick,
 		}
 		JSBehavior.dotrack('3', JSON.stringify(trackData))
+
+		if (isCurrentJsSlide() && clickPageY !== null) {
+			const { scrollTop } = getDocumentBounds()
+			const isClickYInViewport = clickPageY >= scrollTop && clickPageY <= scrollTop + maxViewportY
+			if (!isClickYInViewport) {
+				scrollToPageY(clickPageY, () => reportClick(reportKey, reportPosition))
+				return
+			}
+		}
 	} else {
 		const selector = currentAction && currentAction.selector
 		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []

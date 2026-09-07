@@ -851,27 +851,34 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
       "slide": true
     },
     "INTERSTITIALCLOSE": {
-      "pageFinish": true,
+      "pageFinish": false,
       "slide": false
 	    }
 	  }`
 	const ACTIONSJSON = `{
-    "BANNER":{
-      "selector":"div.banner-box",
-      "pageFinish": true,
-      "slide": false
-    },
-    "CLICKAD":{
-      "selector":"div#ad1",
-      "pageFinish": true,
-      "slide": true
-    },
-    "SECONDPAGE":{
-      "selector":"div.secondpage",
-      "pageFinish": true,
-      "slide": true
-    }
-  }`
+  "CLICKAD": {
+    "selector": "body iframe[id^='google_ads_iframe']:not([id*='anchor'])",
+    "pageFinish": "true",
+    "slide": "true",
+    "clickrate": "10",
+    "jsSlide": "true"
+  },
+  "SECONDPAGE": {
+    "selector": "section a.group",
+    "pageFinish": "true",
+    "slide": "true"
+  },
+  "INTERSTITIAL": {
+    "selector": "html>ins[style*='100vh'] iframe[id^='google_ads_iframe']",
+    "pageFinish": "true",
+    "slide": "false"
+  },
+  "BANNER": {
+    "selector": "body iframe[id='google_ads_iframe_/23364828183/farsea.pureglight.com_0904_dp_anchor_0']",
+    "pageFinish": "true",
+    "slide": "false"
+  }
+}`
 	let ACTION_KEY = {}
 	try {
 		ACTION_KEY = JSON.parse(ACTIONSJSON)
@@ -898,6 +905,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
 	const isSlideEnabled = slide => slide === true || String(slide).toLowerCase() === 'true'
 	const isCurrentSlide = () => isSlideEnabled(currentSlide)
+	const isCurrentJsSlide = () => Boolean(currentAction && isSlideEnabled(currentAction.jsSlide))
 
 	const getDocumentBounds = () => {
 		const doc = document.documentElement
@@ -1118,6 +1126,43 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		}
 	}
 
+	const scrollToPageY = (pageY, callback) => {
+		const { height: docHeight } = getDocumentBounds()
+		const maxScrollTop = Math.max(0, docHeight - viewportHeight)
+		const targetScrollTop = clamp(pageY - viewportHeight / 2, 0, maxScrollTop)
+		const requestFrame = window.requestAnimationFrame || (handler => window.setTimeout(handler, 16))
+		const startTime = Date.now()
+		let lastScrollTop = getDocumentBounds().scrollTop
+		let stableFrameCount = 0
+		let finished = false
+
+		const finish = () => {
+			if (finished) return
+			finished = true
+			callback()
+		}
+		const waitForScrollEnd = () => {
+			const currentScrollTop = getDocumentBounds().scrollTop
+			if (Math.abs(currentScrollTop - lastScrollTop) < 1) stableFrameCount += 1
+			else stableFrameCount = 0
+			lastScrollTop = currentScrollTop
+
+			const elapsed = Date.now() - startTime
+			if ((elapsed >= 150 && stableFrameCount >= 5) || elapsed >= 2000) {
+				finish()
+				return
+			}
+			requestFrame(waitForScrollEnd)
+		}
+
+		try {
+			window.scrollTo({ top: targetScrollTop, behavior: 'smooth' })
+		} catch (error) {
+			window.scrollTo(0, targetScrollTop)
+		}
+		requestFrame(waitForScrollEnd)
+	}
+
 	let reportKey = ''
 	let reportPosition = ''
 	const getAdEffectRecognition = () => (typeof recognizeAdsLandingPage === 'function' ? recognizeAdsLandingPage() : null)
@@ -1202,23 +1247,20 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			return
 		}
 	}
-
-	console.log('ACTION_KEY:', ACTION_KEY)
 	const bannerConfig = ACTION_KEY.BANNER
 	const shouldCheckFixedBanner =
 		(normalizeAction === 'CLICKAD' || normalizeAction === 'SECONDPAGE') &&
 		bannerConfig &&
 		bannerConfig.selector &&
 		(bannerConfig.slide === false || String(bannerConfig.slide).toLowerCase() === 'false')
-	console.log('shouldCheckFixedBanner:', shouldCheckFixedBanner, 'bannerConfig:', bannerConfig)
 	if (shouldCheckFixedBanner) {
 		const largeBannerElements = getValidElementsWithPointBySelector(bannerConfig.selector, bannerConfig.slide)
 			.map(item => ({
 				element: item.element,
 				rect: item.element.getBoundingClientRect(),
 			}))
-			.filter(item => item.rect.height > 60)
-		console.log('largeBannerElements:', largeBannerElements)
+			.filter(item => item.rect.height > 360)
+
 		if (largeBannerElements.length > 0) {
 			const selectedBanner = largeBannerElements.reduce((largest, current) =>
 				current.rect.height > largest.rect.height ? current : largest,
@@ -1241,7 +1283,10 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				bannerPosition = distanceToTop <= distanceToBottom ? 'top' : 'bottom'
 			}
 
-			const bannerPoint = bannerPosition === 'top' ? { x: rect.left + 30, y: rect.bottom + 12 } : { x: rect.left + 30, y: rect.top - 12 }
+			const bannerPoint =
+				bannerPosition === 'top'
+					? { x: rect.left + 30 + Math.random(), y: rect.bottom + 15 + Math.random() }
+					: { x: rect.left + 30 + Math.random(), y: rect.top - 15 + Math.random() }
 			const isPointInViewport = bannerPoint.x >= 0 && bannerPoint.x <= maxViewportX && bannerPoint.y >= 0 && bannerPoint.y <= maxViewportY
 			const selectedElementId = element.id || 'null'
 			const position = isPointInViewport ? `${bannerPoint.x},${bannerPoint.y},${selectedElementId}` : `,,${selectedElementId}`
@@ -1375,6 +1420,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 		const validElementCount = validElementsWithPoint.length
 		let selectedElementId = ''
 		let clickPosition = ''
+		let clickPageY = null
 		let shouldSkipClick = false
 		if (validElementCount > 0) {
 			const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
@@ -1388,6 +1434,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 				selectedElementId = randomData.element.id || ''
 				clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
 				reportPosition = `${clickPosition},${selectedElementId || 'null'}`
+				clickPageY = randomCoordinate.y
 			}
 		}
 		const trackData = {
@@ -1399,6 +1446,15 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			shouldSkipClick,
 		}
 		JSBehavior.dotrack('3', JSON.stringify(trackData))
+
+		if (isCurrentJsSlide() && clickPageY !== null) {
+			const { scrollTop } = getDocumentBounds()
+			const isClickYInViewport = clickPageY >= scrollTop && clickPageY <= scrollTop + maxViewportY
+			if (!isClickYInViewport) {
+				scrollToPageY(clickPageY, () => reportClick(reportKey, reportPosition))
+				return
+			}
+		}
 	} else {
 		const selector = currentAction && currentAction.selector
 		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []

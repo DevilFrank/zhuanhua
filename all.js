@@ -1331,6 +1331,18 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			}
 			if (actionsRequiringElementIds.has(normalizedActionKey)) {
 				actionStats.elementIds = uniqueValidElements.map(item => item.element.id).filter(Boolean)
+				const canSlide = isSlideEnabled(actionConfig && actionConfig.slide)
+				const { scrollLeft, scrollTop } = getDocumentBounds()
+				actionStats.elements = uniqueValidElements.map(({ element }) => {
+					const rect = element.getBoundingClientRect()
+					return {
+						elementId: element.id || '',
+						width: rect.width,
+						height: rect.height,
+						left: rect.left + (canSlide ? scrollLeft : 0),
+						top: rect.top + (canSlide ? scrollTop : 0),
+					}
+				})
 			}
 			actionElementStats.push(actionStats)
 			if (uniqueValidElements.length > 0) matchedActionKeys.push(normalizedActionKey)

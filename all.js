@@ -1477,13 +1477,6 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			INTERSTITIAL: '7',
 		}
 		const trackType = trackTypeByAction[normalizeAction] || '4'
-		if (trackType === '9' && window.location.hostname === 'www.google.com') {
-			window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
-			if (validElementsWithPoint.length > 0) {
-				const selectedElement = validElementsWithPoint[0].element
-				trackData.selectedElementHTML = selectedElement.outerHTML
-			}
-		}
 		JSBehavior.dotrack(trackType, JSON.stringify(trackData))
 	}
 

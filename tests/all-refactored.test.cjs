@@ -33,6 +33,20 @@ function add(name, options = {}, check = () => {}) {
   scenarios.push({ name, action: 'clickad', config: config(), elements: [ad()], ...options, check })
 }
 
+function jsonInputFor(scenario) {
+  if (Object.hasOwn(scenario, 'jsonString')) return scenario.jsonString
+  return JSON.stringify(scenario.jsonParams === undefined ? {
+    jskey: scenario.action,
+    searchText: scenario.searchText === undefined ? 'ab' : scenario.searchText,
+    step: scenario.step || '',
+    behaviorsId: scenario.behaviorsId === undefined ? 'offline-behavior' : scenario.behaviorsId,
+    countryCode: scenario.countryCode === undefined ? 'US' : scenario.countryCode,
+    value: scenario.value,
+    isScroll: scenario.isScroll,
+    isJump: scenario.isJump,
+  } : scenario.jsonParams)
+}
+
 async function run(source, scenario) {
   let now = 100000
   let randomCount = 0
@@ -63,6 +77,7 @@ async function run(source, scenario) {
     clearTimeout(id) { timers.delete(id) },
     requestAnimationFrame(fn) { return window.setTimeout(fn, 16) },
     scrollTo(options, y) {
+      if (scenario.smoothScrollThrows && typeof options === 'object') throw new Error('Smooth scrolling unsupported')
       const top = typeof options === 'object' ? options.top : y
       scrolls.push(top)
       window.pageYOffset = top
@@ -140,10 +155,12 @@ async function run(source, scenario) {
   if (!scenario.bootstrap) {
     script = marker >= 0 ? script.slice(0, marker) : script.split(';(function allACtionWithParams')[0]
   } else {
-    script = script.replace(
-      "allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')",
-      'allACtion(' + [scenario.action, 'ab', '', 'offline-behavior', 'US'].map(value => JSON.stringify(value)).join(',') + ')',
-    )
+    const bootstrapCall = /allACtion\('\{jskey\}', '\{searchText\}', '\{step\}', '\{behaviorsId\}', '\{countryCode\}'(?:, '\{value\}')?\)/
+    assert.ok(bootstrapCall.test(script), 'Missing client bootstrap call')
+    const invocation = scenario.json
+      ? 'allACtionJSON(' + JSON.stringify(jsonInputFor(scenario)) + ')'
+      : 'allACtion(' + [scenario.action, 'ab', scenario.step || '', 'offline-behavior', scenario.countryCode || 'US', scenario.value === undefined ? '' : scenario.value].map(value => JSON.stringify(value)).join(',') + ')'
+    script = script.replace(bootstrapCall, () => invocation)
   }
   script = script.replace('{config}', scenario.rawConfig === undefined ? JSON.stringify(scenario.config) : scenario.rawConfig)
   vm.runInContext(script, context, { filename: source.path })
@@ -162,7 +179,7 @@ async function run(source, scenario) {
   try {
     if (scenario.api) {
       const runtime = context.AdActionRuntime
-      const actionContext = runtime.createContext(scenario.action, 'ab', '', 'offline-behavior', 'US')
+      const actionContext = runtime.createContext(scenario.action, 'ab', scenario.step || '', 'offline-behavior', scenario.countryCode || 'US', scenario.value)
       const blocker = runtime.detectAdBlocker(actionContext)
       assert.equal(calls.length, 0, 'Detection must not report or track')
       const randomBefore = randomCount
@@ -172,8 +189,16 @@ async function run(source, scenario) {
     } else if (scenario.bootstrap) {
       assert.equal(window.JSBehavior, JSBehavior, 'Full script must preserve the injected native bridge')
       assert.equal(context.JSBehavior, JSBehavior)
+    } else if (scenario.invocations) {
+      for (const invocation of scenario.invocations) {
+        const params = invocation.params
+        if (invocation.format === 'json') context.allACtionJSON(JSON.stringify(params))
+        else context.allACtion(params.jskey, params.searchText, params.step, params.behaviorsId, params.countryCode, params.value)
+      }
+    } else if (scenario.json) {
+      context.allACtionJSON(jsonInputFor(scenario))
     } else {
-      context.allACtion(scenario.action, scenario.searchText || 'ab', scenario.step || '', 'offline-behavior', scenario.countryCode || 'US')
+      context.allACtion(scenario.action, scenario.searchText || 'ab', scenario.step || '', 'offline-behavior', scenario.countryCode || 'US', scenario.value)
     }
   }
   catch (error) { errors.push([error.name, error.message]) }
@@ -266,9 +291,45 @@ add('adeffect last field advances submit', { action: 'adeffect', step: 'temporar
 add('adeffect unavailable person still advances', { action: 'adeffect', step: 'fullName', person: null, elements: formElements, form }, r => { assert.deepEqual(r.events, []); assert.equal(resultAt(r)[3], 'temporaryMail') })
 add('adeffect unknown step restarts first field', { action: 'adeffect', step: 'missing', elements: formElements, form }, r => assert.equal(resultAt(r)[3], 'fullName'))
 add('adeffect country forwarding', { action: 'adeffect', countryCode: 'GB', elements: formElements, form }, r => assert.deepEqual(r.peopleRequests, [['offline-behavior', 'GB']]))
+add('adeffect keeps countryCode independent of sixth value', { action: 'adeffect', countryCode: 'CA', value: '135.132453455,1806.1235454545', elements: formElements, form }, r => { assert.deepEqual(r.peopleRequests, [['offline-behavior', 'CA']]); assert.deepEqual(r.scrolls, []) })
 add('adeffect birthday date conversion', { action: 'adeffect', step: 'birthday', elements: [element('birth', '.birth', {}, { tagName: 'INPUT', attributes: { type: 'date' } }), formElements[2]], form: { fields: [['birthday', 'birth']], submit: 'submit' } }, r => assert.equal(r.nodes[0].value, '1815-12-10'))
 add('adeffect select matches state full name', { action: 'adeffect', step: 'state', elements: [element('state', '.state', {}, { tagName: 'SELECT', options: [{ value: '', textContent: 'Choose' }, { value: 'NY', textContent: 'New York' }, { value: 'CA', textContent: 'California' }] }), formElements[2]], form: { fields: [['state', 'state']], submit: 'submit' } }, r => { assert.equal(r.nodes[0].value, 'CA'); assert.equal(r.nodes[0].selectedIndex, 2) })
 add('adeffect checkbox toggles and dispatches', { action: 'adeffect', step: 'fullName', elements: [element('check', '.check', {}, { tagName: 'INPUT', attributes: { type: 'checkbox' } }), formElements[2]], form: { fields: [['fullName', 'check']], submit: 'submit' } }, r => { assert.equal(r.nodes[0].checked, true); assert.deepEqual(r.events.map(e => e[1]), ['focus', 'click', 'input', 'change']) })
+
+// ACTIONFAIL is a new action, so assert its contract directly rather than compare to all.js.
+const actionFailScenarios = [
+  { name: 'interstitial handler', elements: [inter()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'interstitial takes priority over high banner', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'top banner retries clickad', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
+  { name: 'bottom banner retries secondpage', step: 'secondpage', elements: [banner(400, 200, { parentStyle: { bottom: '0px' } })], expectedNextStep: 'secondpage', expectedPosition: '50.5,185.5,banner-one', banner: true },
+  { name: 'failed search still checks banner', step: 'search', elements: [banner()], expectedNextStep: 'search', banner: true },
+  { name: 'failed interstitialclose does not bypass guard', step: 'interstitialclose', elements: [inter()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'raw failed jskey is preserved', action: ' Action_fail ', step: ' Second_page ', elements: [banner()], expectedNextStep: ' Second_page ', banner: true },
+  { name: 'banner dismissal out of viewport still returns failed jskey', step: 'agreement', elements: [banner(595)], expectedNextStep: 'agreement', expectedPosition: ',,banner-one', banner: true },
+  { name: 'missing step returns empty nextStep', step: '', elements: [banner()], expectedNextStep: '', banner: true },
+  { name: 'no blocker returns empty result', elements: [ad()], expectedNextStep: '', expectedPosition: '' },
+  { name: 'exact banner height threshold does not intercept', elements: [banner(360)], expectedNextStep: '', expectedPosition: '' },
+  { name: 'scrollable banner does not intercept', config: config({ BANNER: { selector: '.banner', slide: true } }), elements: [banner()], expectedNextStep: '', expectedPosition: '' },
+  { name: 'absent ad config is safe', config: {}, elements: [], expectedNextStep: '', expectedPosition: '' },
+  { name: 'configured actionfail selector never triggers ordinary click', config: config({ ACTIONFAIL: { selector: '.ad' } }), elements: [ad()], expectedNextStep: '', expectedPosition: '' },
+  { name: 'full injected script forwards failed jskey', step: 'search', elements: [banner()], bootstrap: true, expectedNextStep: 'search', banner: true },
+  { name: 'interstitial still precedes coordinate recovery', value: '135.132453455,1806.1235454545', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'banner still precedes coordinate recovery', value: '135.132453455,1806.1235454545', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
+]
+
+const actionFailScrollScenarios = [
+  { name: 'replays original page coordinates after scroll', value: '135.132453455,1806.1235454545', expectedScrollTop: 1506.1235454545 },
+  { name: 'preserves coordinate string precision', value: '135.13245345500000,1806.12354545450000', expectedScrollTop: 1506.1235454545 },
+  { name: 'page Y is not added to existing scroll offset', value: '135.132453455,1806.1235454545', scrollTop: 1000, expectedScrollTop: 1506.1235454545 },
+  { name: 'clamps scroll near document bottom', value: '135,2399', expectedScrollTop: 1800 },
+  { name: 'clamps scroll near document top', value: '135,100', expectedScrollTop: 0 },
+  { name: 'zero coordinates remain valid', value: '0,0', expectedScrollTop: 0 },
+  { name: 'recovery does not require failed action selectors', value: '135,1806', config: {}, expectedScrollTop: 1506 },
+  { name: 'forwards raw failed action and marks page coordinates', value: '135,1806', action: ' Action_fail ', step: ' Second_page ', config: config({ ACTIONFAIL: { slide: false, pageFinish: true } }), expectedScrollTop: 1506 },
+  { name: 'smooth scrolling fallback still reports exactly once', value: '135,1806', smoothScrollThrows: true, expectedScrollTop: 1506 },
+  { name: 'six-argument bootstrap forwards value', value: '135.132453455,1806.1235454545', countryCode: 'GB', bootstrap: true, expectedScrollTop: 1506.1235454545 },
+]
+const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806', ' , ', '135,1806,ad-id', 'NaN,1806', '135,Infinity', '135,not-a-number', '{value}']
 
 ;(async () => {
   let passed = 0
@@ -322,6 +383,190 @@ add('adeffect checkbox toggles and dispatches', { action: 'adeffect', step: 'ful
   assert.equal(tracks(bootstrap).length, 1)
   assert.equal(resultAt(bootstrap)[1], 'secondpage')
   console.log('4 public API and full-script bootstrap checks passed.')
+
+  for (const test of actionFailScenarios) {
+    const scenario = { config: config(), action: 'actionfail', step: 'clickad', ...test }
+    const actual = await run(sources[1], scenario)
+    assert.deepEqual(actual.errors, [], test.name)
+    assert.equal(callResults(actual).length, 1, test.name + ': exactly one result')
+    assert.equal(resultAt(actual)[1], test.banner ? scenario.action : 'actionfail', test.name)
+    assert.equal(resultAt(actual)[3], test.expectedNextStep, test.name)
+    assert.equal(resultAt(actual)[6], 'offline-behavior', test.name)
+    if (test.expectedPosition !== undefined) assert.equal(resultAt(actual)[2], test.expectedPosition, test.name)
+    assert.deepEqual(tracks(actual).map(([type]) => type), test.banner ? [26] : [], test.name)
+    if (test.banner) assert.deepEqual(resultAt(actual).slice(4, 6), [false, false], test.name)
+    assert.deepEqual(actual.events, [], test.name + ': never executes the failed action')
+    assert.deepEqual(actual.scrolls, [], test.name)
+    assert.deepEqual(actual.peopleRequests, [], test.name)
+  }
+  console.log(`${actionFailScenarios.length} actionfail contract checks passed.`)
+
+  for (const test of actionFailScrollScenarios) {
+    const scenario = { config: config(), action: 'actionfail', step: 'clickad', elements: [ad()], ...test }
+    const actual = await run(sources[1], scenario)
+    assert.deepEqual(actual.errors, [], test.name)
+    assert.equal(actual.syncCallCount, 0, test.name + ': do not report before scrolling finishes')
+    assert.equal(callResults(actual).length, 1, test.name + ': exactly one callback')
+    assert.deepEqual(resultAt(actual).slice(1), ['actionfail', test.value, scenario.step, true, false, 'offline-behavior'], test.name)
+    assert.deepEqual(actual.scrolls, [test.expectedScrollTop], test.name)
+    assert.deepEqual(tracks(actual), [], test.name + ': no ordinary click or banner tracking')
+    assert.deepEqual(actual.events, [], test.name)
+    assert.deepEqual(actual.peopleRequests, [], test.name)
+    assert.equal(actual.randomCount, 0, test.name + ': do not reselect a random target')
+  }
+  for (const value of invalidActionFailValues) {
+    const actual = await run(sources[1], { config: config(), action: 'actionfail', step: 'clickad', elements: [], value })
+    assert.deepEqual(actual.errors, [])
+    assert.deepEqual(actual.scrolls, [], 'Invalid coordinates must not scroll: ' + String(value))
+    assert.equal(actual.syncResultCount, 1)
+    assert.deepEqual(resultAt(actual).slice(1), ['actionfail', '', '', '', '', 'offline-behavior'])
+    assert.deepEqual(tracks(actual), [])
+  }
+  console.log(`${actionFailScrollScenarios.length} actionfail scroll/replay checks and ${invalidActionFailValues.length} invalid-value checks passed.`)
+
+  // JSON transport has a separate wire contract; compare its decoded fields directly.
+  const jsonResult = (actual, index = 0) => {
+    const call = callResults(actual)[index]
+    assert.equal(call.length, 2, 'JSON jsResult takes exactly one argument')
+    assert.equal(typeof call[1], 'string')
+    const result = JSON.parse(call[1])
+    assert.deepEqual(Object.keys(result).sort(), ['behaviorsId', 'isJump', 'isScroll', 'jskey', 'step', 'value'])
+    for (const key of ['isScroll', 'isJump']) assert.ok(result[key] === 'true' || result[key] === 'false', key + ' must be a boolean string')
+    return result
+  }
+  const jsonScenarios = [
+    {
+      name: 'ordinary result uses JSON field names and one string argument',
+      check: (r, result) => assert.deepEqual(result, { jskey: 'clickad', value: '70,80,ad-one', step: '', isScroll: 'false', isJump: 'false', behaviorsId: 'offline-behavior' }),
+    },
+    {
+      name: 'true input flags override config and enable page coordinates', isScroll: 'true', isJump: 'true', scrollTop: 100,
+      elements: [element('lower-ad', '.ad', { top: 900 })],
+      check: (r, result) => { assert.equal(result.value, '70,1030,lower-ad'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'true') },
+    },
+    ...[false, 'false'].map(flag => ({
+      name: typeof flag + ' false overrides true config', isScroll: flag, isJump: flag,
+      config: config({ CLICKAD: { selector: '.ad', slide: true, pageFinish: true } }),
+      elements: [element('lower-ad', '.ad', { top: 900 })],
+      check: (r, result) => { assert.equal(result.value, ''); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []) },
+    })),
+    {
+      name: 'boolean true flags are accepted', isScroll: true, isJump: true,
+      check: (r, result) => { assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'true') },
+    },
+    {
+      name: 'flag strings tolerate case and surrounding whitespace', isScroll: ' TRUE ', isJump: ' FaLsE ',
+      check: (r, result) => { assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false') },
+    },
+    {
+      name: 'omitted flags preserve existing config', scrollTop: 100,
+      config: config({ CLICKAD: { selector: '.ad', slide: 'TRUE', pageFinish: 'FALSE' } }),
+      elements: [element('lower-ad', '.ad', { top: 900 })],
+      check: (r, result) => { assert.equal(result.value, '70,1030,lower-ad'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false') },
+    },
+    {
+      name: 'single flag does not overwrite the other config flag', isScroll: false,
+      config: config({ CLICKAD: { selector: '.ad', slide: true, pageFinish: true } }),
+      check: (r, result) => { assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'true') },
+    },
+    {
+      name: 'interstitial precedes banner and retains fixed result flags', action: 'actionfail', step: 'clickad', value: '135,1806',
+      isScroll: true, isJump: true, elements: [inter(), banner()],
+      check: (r, result) => { assert.equal(result.jskey, 'actionfail'); assert.equal(result.step, 'irregularinter'); assert.equal(result.value, ''); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []); assert.deepEqual(tracks(r), []) },
+    },
+    {
+      name: 'high banner retries supplied failed action with fixed result flags', action: 'actionfail', step: ' Second_page ', value: '135,1806',
+      isScroll: true, isJump: true, elements: [banner()],
+      check: (r, result) => { assert.equal(result.step, ' Second_page '); assert.equal(result.value, '50.5,415.5,banner-one'); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []); assert.equal(tracks(r)[0][0], 26) },
+    },
+    {
+      name: 'actionfail asynchronously replays precise page coordinate string', action: 'actionfail', step: 'clickad',
+      value: '135.13245345500000,1806.12354545450000', isScroll: 'false', isJump: 'true',
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '135.13245345500000,1806.12354545450000'); assert.equal(result.step, 'clickad'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, [1506.1235454545]); assert.equal(r.randomCount, 0) },
+    },
+    {
+      name: 'jsSlide callback retains JSON protocol',
+      config: config({ CLICKAD: { selector: '.ad', slide: true, jsSlide: true, pageFinish: true } }),
+      elements: [element('lower-ad', '.ad', { top: 900 })],
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '70,930,lower-ad'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'true'); assert.deepEqual(r.scrolls, [630]) },
+    },
+    {
+      name: 'adeffect async callback preserves country and behavior identity', action: 'adeffect', countryCode: 'CA', behaviorsId: 'json-form', elements: formElements, form,
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.step, 'fullName'); assert.equal(result.behaviorsId, 'json-form'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.peopleRequests, [['json-form', 'CA']]) },
+    },
+    {
+      name: 'omitted fields use existing allACtion defaults', jsonParams: { jskey: 'adeffect' }, elements: formElements, form,
+      check: (r, result) => { assert.equal(result.behaviorsId, ''); assert.deepEqual(r.peopleRequests, [['', 'US']]); assert.equal(result.step, 'fullName') },
+    },
+    {
+      name: 'adeffect callback honors explicit JSON flags', action: 'adeffect', isScroll: 'false', isJump: 'true', elements: formElements, form,
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'true') },
+    },
+    {
+      name: 'interstitial close retains viewport coordinates and fixed flags', action: 'interstitialclose', isScroll: 'true', isJump: 'true', scrollTop: 100, elements: [inter()],
+      check: (r, result) => { assert.equal(result.value, '766,22'); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []) },
+    },
+    {
+      name: 'explicit empty search text remains empty', action: 'search', step: '{searchButton}', searchText: '', elements: searchElements,
+      check: (r, result) => { assert.equal(r.nodes[0].value, ''); assert.equal(result.value, '270,80'); assert.equal(r.events.filter(e => e[1] === 'keypress').length, 0) },
+    },
+    {
+      name: 'omitted search text uses iphone default', jsonParams: { jskey: 'search', step: '{searchButton}' }, elements: searchElements,
+      check: r => assert.equal(r.nodes[0].value, 'iphone'),
+    },
+    {
+      name: 'checkpage fixed blank flags serialize as false', action: 'checkpage', isScroll: true, isJump: true, elements: [],
+      check: (r, result) => { assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false') },
+    },
+    {
+      name: 'full script supports JSON invocation and preserves native bridge', bootstrap: true, action: 'actionfail', step: 'clickad', value: '135,1806',
+      check: (r, result) => { assert.equal(result.jskey, 'actionfail'); assert.equal(result.step, 'clickad'); assert.equal(result.value, '135,1806'); assert.deepEqual(r.scrolls, [1506]) },
+    },
+  ]
+  for (const test of jsonScenarios) {
+    const actual = await run(sources[1], { config: config(), action: 'clickad', elements: [ad()], ...test, json: true })
+    assert.deepEqual(actual.errors, [], test.name)
+    assert.equal(callResults(actual).length, 1, test.name)
+    try { test.check(actual, jsonResult(actual)) } catch (error) { throw new Error(test.name + ': ' + error.message) }
+  }
+
+  const invalidJSONInputs = [
+    '', '{broken', 'null', '[]', '1', '"clickad"', '{}', '{"jskey":null}', '{"jskey":3}', '{"jskey":""}', '{"jskey":" _- "}',
+    '{"jskey":"clickad","isScroll":"yes"}', '{"jskey":"clickad","isJump":1}', '{"jskey":"clickad","isScroll":null}',
+    { jskey: 'clickad' }, null,
+  ]
+  for (const jsonString of invalidJSONInputs) {
+    const actual = await run(sources[1], { config: config(), elements: [ad()], json: true, jsonString })
+    assert.deepEqual(actual.errors, [], 'Invalid JSON input must not throw')
+    for (const key of ['calls', 'events', 'scrolls', 'peopleRequests']) assert.deepEqual(actual[key], [], 'Invalid JSON input must not execute: ' + String(jsonString))
+  }
+
+  for (const delayedFormat of ['json', 'legacy']) {
+    const immediateFormat = delayedFormat === 'json' ? 'legacy' : 'json'
+    const value = '135.13245345500000,1806.12354545450000'
+    const actual = await run(sources[1], {
+      config: config(), elements: [element('agreement-one', '.agreement', {}, { fixed: true })],
+      invocations: [
+        { format: delayedFormat, params: { jskey: 'actionfail', step: 'clickad', value, behaviorsId: 'delayed' } },
+        { format: immediateFormat, params: { jskey: 'agreement', behaviorsId: 'immediate' } },
+      ],
+    })
+    assert.deepEqual(actual.errors, [])
+    assert.equal(actual.syncResultCount, 1)
+    assert.equal(callResults(actual).length, 2)
+    const jsonIndex = delayedFormat === 'json' ? 1 : 0
+    const json = jsonResult(actual, jsonIndex)
+    const legacy = callResults(actual)[1 - jsonIndex]
+    assert.equal(legacy.length, 7, 'Concurrent positional invocation keeps six result arguments')
+    if (delayedFormat === 'json') {
+      assert.deepEqual(json, { jskey: 'actionfail', value, step: 'clickad', isScroll: 'true', isJump: 'false', behaviorsId: 'delayed' })
+      assert.deepEqual(legacy.slice(1), ['agreement', '70,80,agreement-one', '', false, false, 'immediate'])
+    } else {
+      assert.deepEqual(json, { jskey: 'agreement', value: '70,80,agreement-one', step: '', isScroll: 'false', isJump: 'false', behaviorsId: 'immediate' })
+      assert.deepEqual(legacy.slice(1), ['actionfail', value, 'clickad', true, false, 'delayed'])
+    }
+  }
+  console.log(`${jsonScenarios.length} JSON action checks, ${invalidJSONInputs.length} invalid JSON input checks, and 2 mixed-protocol async checks passed.`)
 
   console.log('Known original behaviors retained: missing INTERSTITIAL config throws in INTERSTITIALCLOSE; clickrate 0 clicks if random bucket is 0; EXPOSURE action falls through generic click handler.')
   if (failures.length) process.exitCode = 1

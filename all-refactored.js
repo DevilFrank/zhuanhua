@@ -830,10 +830,23 @@ var AdActionRuntime = (() => {
 			slide = context.slide,
 			pageFinish = context.pageFinish,
 		} = result
+		if (context.resultFormat === 'json') {
+			JSBehavior.jsResult(
+				JSON.stringify({
+					jskey: action,
+					value: position,
+					step: nextStep,
+					isScroll: String(isSlideEnabled(slide)),
+					isJump: String(isSlideEnabled(pageFinish)),
+					behaviorsId: context.behaviorsId,
+				}),
+			)
+			return
+		}
 		JSBehavior.jsResult(action, position, nextStep, slide, pageFinish, context.behaviorsId)
 	}
 
-	function createContext(originalAction, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
+	function createContext(originalAction, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US', value = '', options = {}) {
 		let config = {}
 		try {
 			config = JSON.parse(`{config}`)
@@ -848,7 +861,8 @@ var AdActionRuntime = (() => {
 			.replace(/[\s_-]+/g, '')
 			.toUpperCase()
 		const actionConfig = config[action]
-		const slide = actionConfig ? actionConfig.slide : ''
+		const slide = options.isScroll === undefined ? (actionConfig ? actionConfig.slide : '') : options.isScroll
+		const pageFinish = options.isJump === undefined ? (actionConfig ? actionConfig.pageFinish : '') : options.isJump
 		const width = window.innerWidth || document.documentElement.clientWidth
 		const height = window.innerHeight || document.documentElement.clientHeight
 		const viewport = { width, height, maxX: Math.max(0, width - 1), maxY: Math.max(0, height - 1) }
@@ -859,11 +873,14 @@ var AdActionRuntime = (() => {
 			config,
 			slide,
 			viewport,
-			pageFinish: actionConfig ? actionConfig.pageFinish : '',
+			pageFinish,
+			resultFormat: options.resultFormat,
 			searchText,
+			step,
 			nowStep: step || '{step}',
 			behaviorsId,
 			countryCode,
+			value,
 			dom: createDomTools(viewport, slide),
 		}
 	}
@@ -1209,7 +1226,7 @@ var AdActionRuntime = (() => {
 	function detectHighBanner(context) {
 		const config = context.config.BANNER
 		if (
-			!['CLICKAD', 'SECONDPAGE'].includes(context.action) ||
+			!['CLICKAD', 'SECONDPAGE', 'ACTIONFAIL'].includes(context.action) ||
 			!config ||
 			!config.selector ||
 			!(config.slide === false || String(config.slide).toLowerCase() === 'false')
@@ -1272,7 +1289,7 @@ var AdActionRuntime = (() => {
 		sendResult(context, {
 			action: context.originalAction,
 			position,
-			nextStep: context.originalAction,
+			nextStep: context.action === 'ACTIONFAIL' ? context.step : context.originalAction,
 			slide: false,
 			pageFinish: false,
 		})
@@ -1319,8 +1336,6 @@ var AdActionRuntime = (() => {
 				action: 'adeffect',
 				position: getElementPosition(context, target),
 				nextStep: nextStep || '',
-				slide: true,
-				pageFinish: false,
 			})
 		})
 	}
@@ -1391,7 +1406,7 @@ var AdActionRuntime = (() => {
 	function handleInterstitialClose(context) {
 		// 与原版一致：此动作要求配置 INTERSTITIAL；关闭坐标由客户端执行。
 		const selector = context.config.INTERSTITIAL.selector
-		const targets = selector ? getInterstitialCandidates(context, context.slide) : []
+		const targets = selector ? getInterstitialCandidates(context, false) : []
 		let position = ''
 		if (targets.length) {
 			position = formatPoint({
@@ -1400,7 +1415,7 @@ var AdActionRuntime = (() => {
 			})
 			track('2', { action: context.action.toLowerCase(), position })
 		}
-		return { position }
+		return { position, slide: false, pageFinish: false }
 	}
 
 	const clickTrackTypes = { CLICKAD: '3', BANNER: '6', SECONDPAGE: '9', ASSOCIATIONSEARCH: '8', INTERSTITIAL: '7' }
@@ -1436,11 +1451,34 @@ var AdActionRuntime = (() => {
 		return result
 	}
 
+	const parsePagePoint = value => {
+		if (typeof value !== 'string') return null
+		const parts = value.split(',')
+		if (parts.length !== 2 || parts.some(part => !part.trim())) return null
+		const [x, y] = parts.map(Number)
+		return Number.isFinite(x) && Number.isFinite(y) ? { x, y, position: value } : null
+	}
+
+	function handleActionFail(context) {
+		const point = parsePagePoint(context.value)
+		if (!point) return {}
+		context.dom.scrollToPageY(point.y, () => {
+			sendResult(context, {
+				position: point.position,
+				nextStep: context.step,
+				// value 沿用页面坐标，滚动后保持原值及精度。
+				slide: true,
+				pageFinish: false,
+			})
+		})
+	}
+
 	const handlers = {
 		ADEFFECT: handleAdEffect,
 		CHECKPAGE: handleCheckPage,
 		SEARCH: handleSearch,
 		INTERSTITIALCLOSE: handleInterstitialClose,
+		ACTIONFAIL: handleActionFail,
 	}
 	function run(context) {
 		if (handleAdBlocker(context)) return
@@ -1453,8 +1491,28 @@ var AdActionRuntime = (() => {
 	return { createContext, detectAdBlocker, handleAdBlocker, run }
 })()
 
-function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
-	AdActionRuntime.run(AdActionRuntime.createContext(jskey, searchText, step, behaviorsId, countryCode))
+function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US', value = '', options = {}) {
+	AdActionRuntime.run(AdActionRuntime.createContext(jskey, searchText, step, behaviorsId, countryCode, value, options))
+}
+
+function allACtionJSON(jsonString) {
+	if (typeof jsonString !== 'string') return
+	let params
+	try {
+		params = JSON.parse(jsonString)
+	} catch (error) {
+		return
+	}
+	if (!params || typeof params !== 'object' || Array.isArray(params)) return
+	if (typeof params.jskey !== 'string' || !params.jskey.replace(/[\s_-]+/g, '')) return
+	const options = { resultFormat: 'json' }
+	for (const key of ['isScroll', 'isJump']) {
+		if (params[key] === undefined) continue
+		const value = typeof params[key] === 'string' ? params[key].trim().toLowerCase() : params[key]
+		if (value !== true && value !== false && value !== 'true' && value !== 'false') return
+		options[key] = value === true || value === 'true'
+	}
+	return allACtion(params.jskey, params.searchText, params.step, params.behaviorsId, params.countryCode, params.value, options)
 }
 
 // ==============================
@@ -1472,18 +1530,25 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 // interstitialclose - 插屏广告关闭  2
 // adeffect - 转化
 // exposure - 监听广告曝光
-// actionfail - 动作失败
+// actionfail - 动作失败后处理广告遮挡；step 为失败的 jskey，高 banner 或滚动后回报时作为 nextStep。
+// 第五个参数 countryCode 保持不变；第六个参数 value 为 actionfail 的原页面坐标字符串 "x,y"。
+// 无遮挡时先滚动使 y 进入视口，再原样回报 value（slide=true）；缺失或无效坐标回报空结果。
+// JSON 入口：allACtionJSON(jsonString)，接收 jskey/searchText/step/behaviorsId/countryCode/value/isScroll/isJump。
+// isScroll/isJump 可传布尔值或 "true"/"false"，未传时沿用动作配置；具体处理分支的回报标记优先。
+// JSON 调用的 jsResult 只接收一个 JSON 字符串，字段为 jskey/value/step/isScroll/isJump/behaviorsId。
+// JSON 回报中的 isScroll/isJump 始终为字符串 "true"/"false"；原入口仍回报六个位置参数。
 //
 // 注意：下面调用示例中的 {xxx} 是客户端替换占位符，必须原样保留。
 
 // ==============================
 // 以下是调用代码
+// 此处保留旧客户端模板；JSON 客户端将下方调用替换为 allACtionJSON(jsonString)，只执行所选入口一次。
 // ==============================
 ;(function allACtionWithParams() {
 	if (typeof allACtion === 'undefined') {
 		return 'allACtion_undefined'
 	} else {
-		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}')
+		allACtion('{jskey}', '{searchText}', '{step}', '{behaviorsId}', '{countryCode}', '{value}')
 	}
 })()
 

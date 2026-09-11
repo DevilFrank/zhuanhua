@@ -1354,6 +1354,18 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			}
 			if (actionsRequiringElementIds.has(normalizedActionKey)) {
 				actionStats.elementIds = uniqueValidElements.map(item => item.element.id).filter(Boolean)
+				const canSlide = isSlideEnabled(actionConfig && actionConfig.slide)
+				const { scrollLeft, scrollTop } = getDocumentBounds()
+				actionStats.elements = uniqueValidElements.map(({ element }) => {
+					const rect = element.getBoundingClientRect()
+					return {
+						elementId: element.id || '',
+						width: rect.width,
+						height: rect.height,
+						left: rect.left + (canSlide ? scrollLeft : 0),
+						top: rect.top + (canSlide ? scrollTop : 0),
+					}
+				})
 			}
 			actionElementStats.push(actionStats)
 			if (uniqueValidElements.length > 0) matchedActionKeys.push(normalizedActionKey)
@@ -1488,13 +1500,6 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
 			INTERSTITIAL: '7',
 		}
 		const trackType = trackTypeByAction[normalizeAction] || '4'
-		if (trackType === '9' && window.location.hostname === 'www.google.com') {
-			window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })
-			if (validElementsWithPoint.length > 0) {
-				const selectedElement = validElementsWithPoint[0].element
-				trackData.selectedElementHTML = selectedElement.outerHTML
-			}
-		}
 		JSBehavior.dotrack(trackType, JSON.stringify(trackData))
 	}
 

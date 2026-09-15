@@ -818,6 +818,7 @@ var startAdExposureMonitor = selector => {
 var AdActionRuntime = (() => {
 	const randomItem = list => list[Math.floor(Math.random() * list.length)]
 	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
+	const normalizeAction = action => String(action || '').trim().replace(/[\s_-]+/g, '').toUpperCase()
 	const isSlideEnabled = slide => slide === true || String(slide).toLowerCase() === 'true'
 	const formatPoint = point => (point ? point.x + ',' + point.y : '')
 	const isPointInViewport = (point, viewport) => point.x >= 0 && point.x <= viewport.maxX && point.y >= 0 && point.y <= viewport.maxY
@@ -830,10 +831,12 @@ var AdActionRuntime = (() => {
 			slide = context.slide,
 			pageFinish = context.pageFinish,
 		} = result
+		// ACTIONFAIL 的处理流程不变，客户端回报统一使用失败动作。
+		const resultAction = context.action === 'ACTIONFAIL' ? context.failedAction.toLowerCase() : action
 		if (context.resultFormat === 'json') {
 			JSBehavior.jsResult(
 				JSON.stringify({
-					jskey: action,
+					jskey: resultAction,
 					value: position,
 					step: nextStep,
 					isScroll: String(isSlideEnabled(slide)),
@@ -843,7 +846,7 @@ var AdActionRuntime = (() => {
 			)
 			return
 		}
-		JSBehavior.jsResult(action, position, nextStep, slide, pageFinish, context.behaviorsId)
+		JSBehavior.jsResult(resultAction, position, nextStep, slide, pageFinish, context.behaviorsId)
 	}
 
 	function createContext(originalAction, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US', value = '', options = {}) {
@@ -856,10 +859,7 @@ var AdActionRuntime = (() => {
 		const clickAdSelector = config.CLICKAD && config.CLICKAD.selector
 		config.EXPOSURE = config.EXPOSURE || {}
 		config.EXPOSURE.selector = clickAdSelector || config.EXPOSURE.selector || null
-		const action = String(originalAction || '')
-			.trim()
-			.replace(/[\s_-]+/g, '')
-			.toUpperCase()
+		const action = normalizeAction(originalAction)
 		const actionConfig = config[action]
 		const slide = options.isScroll === undefined ? (actionConfig ? actionConfig.slide : '') : options.isScroll
 		const pageFinish = options.isJump === undefined ? (actionConfig ? actionConfig.pageFinish : '') : options.isJump
@@ -869,6 +869,7 @@ var AdActionRuntime = (() => {
 		return {
 			originalAction,
 			action,
+			failedAction: action === 'ACTIONFAIL' ? normalizeAction(step) : '',
 			actionConfig,
 			config,
 			slide,
@@ -1225,8 +1226,9 @@ var AdActionRuntime = (() => {
 
 	function detectHighBanner(context) {
 		const config = context.config.BANNER
+		const action = context.action === 'ACTIONFAIL' ? context.failedAction : context.action
 		if (
-			!['CLICKAD', 'SECONDPAGE', 'ACTIONFAIL'].includes(context.action) ||
+			!['CLICKAD', 'SECONDPAGE'].includes(action) ||
 			!config ||
 			!config.selector ||
 			!(config.slide === false || String(config.slide).toLowerCase() === 'false')
@@ -1530,7 +1532,9 @@ function allACtionJSON(jsonString) {
 // interstitialclose - 插屏广告关闭  2
 // adeffect - 转化
 // exposure - 监听广告曝光
-// actionfail - 动作失败后处理广告遮挡；step 为失败的 jskey，高 banner 或滚动后回报时作为 nextStep。
+// actionfail - 动作失败后处理广告遮挡；step 为失败的 jskey，回报 jskey 使用其归一化小写值。
+// 插屏检测规则不变；仅失败动作为 clickad/secondpage 时检测高 banner。
+// 插屏回报 nextStep=irregularinter；高 banner 或滚动后回报 nextStep 使用原 step。
 // 第五个参数 countryCode 保持不变；第六个参数 value 为 actionfail 的原页面坐标字符串 "x,y"。
 // 无遮挡时先滚动使 y 进入视口，再原样回报 value（slide=true）；缺失或无效坐标回报空结果。
 // JSON 入口：allACtionJSON(jsonString)，接收 jskey/searchText/step/behaviorsId/countryCode/value/isScroll/isJump。

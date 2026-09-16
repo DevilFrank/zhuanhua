@@ -215,7 +215,7 @@ async function run(source, scenario) {
     } else if (scenario.json) {
       context.allACtionJSON(jsonInputFor(scenario))
     } else {
-      context.allACtion(scenario.action, scenario.searchText || 'ab', scenario.step || '', 'offline-behavior', scenario.countryCode || 'US', scenario.value)
+      context.allACtion(scenario.action, scenario.searchText || 'ab', scenario.step || '', scenario.behaviorsId === undefined ? 'offline-behavior' : scenario.behaviorsId, scenario.countryCode || 'US', scenario.value)
     }
   }
   catch (error) { errors.push([error.name, error.message]) }
@@ -319,13 +319,12 @@ const actionFailScenarios = [
   { name: 'interstitial takes priority over high banner', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
   { name: 'top banner retries clickad', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
   { name: 'bottom banner retries secondpage', step: 'secondpage', elements: [banner(400, 200, { parentStyle: { bottom: '0px' } })], expectedNextStep: 'secondpage', expectedPosition: '50.5,185.5,banner-one', banner: true },
-  { name: 'failed search skips high banner', step: 'search', elements: [banner()], expectedNextStep: '', expectedPosition: '' },
+  ...['search', 'agreement', 'checkpage', 'interstitial', 'interstitialclose', 'exposure', 'unknown', ''].map(step => ({ name: 'failed ' + (step || 'missing action') + ' still checks high banner', step, elements: [banner()], expectedNextStep: step, expectedPosition: '50.5,415.5,banner-one', banner: true })),
   ...['checkpage', 'interstitial', 'interstitialclose', 'exposure', 'search', 'secondpage'].map(step => ({ name: 'failed ' + step + ' still checks interstitial first', step, elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' })),
   { name: 'normalizes failed jskey but preserves raw nextStep', action: ' Action_fail ', step: ' Second_page ', expectedAction: 'secondpage', elements: [banner()], expectedNextStep: ' Second_page ', banner: true },
   { name: 'uppercase clickad still checks high banner', step: 'CLICKAD', expectedAction: 'clickad', elements: [banner()], expectedNextStep: 'CLICKAD', banner: true },
   { name: 'normalizes interstitial callback identity', step: ' Second-page ', expectedAction: 'secondpage', elements: [inter()], expectedNextStep: 'irregularinter', expectedPosition: '' },
   { name: 'banner dismissal out of viewport still returns failed jskey', step: 'secondpage', elements: [banner(595)], expectedNextStep: 'secondpage', expectedPosition: ',,banner-one', banner: true },
-  { name: 'missing step skips banner and returns empty identity', step: '', elements: [banner()], expectedNextStep: '', expectedPosition: '' },
   { name: 'no blocker returns empty result', elements: [ad()], expectedNextStep: '', expectedPosition: '' },
   { name: 'exact banner height threshold does not intercept', elements: [banner(360)], expectedNextStep: '', expectedPosition: '' },
   { name: 'scrollable banner does not intercept', config: config({ BANNER: { selector: '.banner', slide: true } }), elements: [banner()], expectedNextStep: '', expectedPosition: '' },
@@ -334,22 +333,29 @@ const actionFailScenarios = [
   { name: 'full injected script forwards failed jskey', step: 'secondpage', elements: [banner()], bootstrap: true, expectedNextStep: 'secondpage', banner: true },
   { name: 'interstitial still precedes coordinate recovery', value: '135.132453455,1806.1235454545', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
   { name: 'banner still precedes coordinate recovery', value: '135.132453455,1806.1235454545', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
+  ...['ad1', 'null'].flatMap(id => [
+    { name: 'three-part value with ' + id + ' cannot bypass interstitial', value: '134.52682614712,1440.448002894263,' + id, searchText: 'iphone', behaviorsId: '59304010', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+    { name: 'three-part value with ' + id + ' cannot bypass high banner', value: '134.52682614712,1440.448002894263,' + id, searchText: 'iphone', behaviorsId: '59304010', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
+  ]),
+  { name: 'invalid coordinates cannot bypass interstitial', value: 'NaN,1806,ad1', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'invalid coordinates cannot bypass high banner for another failed action', step: 'search', value: 'NaN,1806,ad1', elements: [banner()], expectedNextStep: 'search', expectedPosition: '50.5,415.5,banner-one', banner: true },
 ]
 
 const actionFailScrollScenarios = [
   { name: 'replays original page coordinates after scroll', value: '135.132453455,1806.1235454545', expectedScrollTop: 1506.1235454545 },
   { name: 'preserves coordinate string precision', value: '135.13245345500000,1806.12354545450000', expectedScrollTop: 1506.1235454545 },
+  ...['ad1', 'null', ''].map(id => ({ name: 'preserves three-part coordinates with ' + (id || 'empty ID'), value: '134.52682614712,1440.448002894263,' + id, searchText: 'iphone', behaviorsId: '59304010', expectedScrollTop: 1140.448002894263 })),
   { name: 'page Y is not added to existing scroll offset', value: '135.132453455,1806.1235454545', scrollTop: 1000, expectedScrollTop: 1506.1235454545 },
   { name: 'clamps scroll near document bottom', value: '135,2399', expectedScrollTop: 1800 },
   { name: 'clamps scroll near document top', value: '135,100', expectedScrollTop: 0 },
   { name: 'zero coordinates remain valid', value: '0,0', expectedScrollTop: 0 },
   { name: 'recovery does not require failed action selectors', value: '135,1806', config: {}, expectedScrollTop: 1506 },
-  { name: 'normalizes failed action and preserves raw nextStep and page coordinates', value: '135,1806', action: ' Action_fail ', step: ' Second_page ', expectedAction: 'secondpage', config: config({ ACTIONFAIL: { slide: false, pageFinish: true } }), expectedScrollTop: 1506 },
-  ...['search', 'agreement', 'checkpage', 'interstitial', 'interstitialclose', 'exposure', 'unknown'].map(step => ({ name: 'failed ' + step + ' skips high banner and replays coordinates', step, elements: [banner()], value: '135,1806', expectedScrollTop: 1506 })),
+  { name: 'normalizes failed action and clears nextStep while preserving page coordinates', value: '135,1806', action: ' Action_fail ', step: ' Second_page ', expectedAction: 'secondpage', config: config({ ACTIONFAIL: { slide: false, pageFinish: true } }), expectedScrollTop: 1506 },
+  ...['search', 'agreement', 'checkpage', 'interstitial', 'interstitialclose', 'exposure', 'unknown', ''].map(step => ({ name: 'failed ' + (step || 'missing action') + ' replays coordinates when unobstructed', step, value: '135,1806', expectedScrollTop: 1506 })),
   { name: 'smooth scrolling fallback still reports exactly once', value: '135,1806', smoothScrollThrows: true, expectedScrollTop: 1506 },
   { name: 'six-argument bootstrap forwards value', value: '135.132453455,1806.1235454545', countryCode: 'GB', bootstrap: true, expectedScrollTop: 1506.1235454545 },
 ]
-const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806', ' , ', '135,1806,ad-id', 'NaN,1806', '135,Infinity', '135,not-a-number', '{value}']
+const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806', ' , ', '135,1806,ad-id,extra', 'NaN,1806', '135,Infinity', '135,not-a-number', '{value}', ',1806,null', '135, ,ad1', 'NaN,1806,ad1', '135,Infinity,null']
 
 ;(async () => {
   let passed = 0
@@ -416,7 +422,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
       if (!json) assert.equal(resultAt(actual).length, 7, 'Positional jsResult keeps six arguments')
       assert.equal(result.jskey, test.expectedAction ?? scenario.step, test.name)
       assert.equal(result.step, test.expectedNextStep, test.name)
-      assert.equal(result.behaviorsId, 'offline-behavior', test.name)
+      assert.equal(result.behaviorsId, scenario.behaviorsId ?? 'offline-behavior', test.name)
       if (test.expectedPosition !== undefined) assert.equal(result.value, test.expectedPosition, test.name)
       assert.deepEqual(tracks(actual).map(([type]) => type), test.banner ? [26] : [], test.name)
       if (test.banner || test.expectedNextStep === 'irregularinter') {
@@ -437,7 +443,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
       assert.deepEqual(actual.errors, [], test.name)
       assert.equal(actual.syncCallCount, 0, test.name + ': do not report before scrolling finishes')
       assert.equal(callResults(actual).length, 1, test.name + ': exactly one callback')
-      assertActionFailResult(actual, json, [test.expectedAction ?? scenario.step, test.value, scenario.step, true, false, 'offline-behavior'], test.name)
+      assertActionFailResult(actual, json, [test.expectedAction ?? scenario.step, test.value, '', true, false, scenario.behaviorsId ?? 'offline-behavior'], test.name)
       assert.deepEqual(actual.scrolls, [test.expectedScrollTop], test.name)
       assert.deepEqual(tracks(actual), [], test.name + ': no ordinary click or banner tracking')
       assert.deepEqual(actual.events, [], test.name)
@@ -504,7 +510,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     {
       name: 'actionfail asynchronously replays precise page coordinate string', action: 'actionfail', step: 'clickad',
       value: '135.13245345500000,1806.12354545450000', isScroll: 'false', isJump: 'true',
-      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '135.13245345500000,1806.12354545450000'); assert.equal(result.step, 'clickad'); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, [1506.1235454545]); assert.equal(r.randomCount, 0) },
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '135.13245345500000,1806.12354545450000'); assert.equal(result.step, ''); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, [1506.1235454545]); assert.equal(r.randomCount, 0) },
     },
     {
       name: 'jsSlide callback retains JSON protocol',
@@ -542,7 +548,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     },
     {
       name: 'full script supports JSON invocation and preserves native bridge', bootstrap: true, action: 'actionfail', step: 'clickad', value: '135,1806',
-      check: (r, result) => { assert.equal(result.jskey, 'clickad'); assert.equal(result.step, 'clickad'); assert.equal(result.value, '135,1806'); assert.deepEqual(r.scrolls, [1506]) },
+      check: (r, result) => { assert.equal(result.jskey, 'clickad'); assert.equal(result.step, ''); assert.equal(result.value, '135,1806'); assert.deepEqual(r.scrolls, [1506]) },
     },
   ]
   for (const test of jsonScenarios) {
@@ -581,17 +587,17 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     const legacy = callResults(actual)[1 - jsonIndex]
     assert.equal(legacy.length, 7, 'Concurrent positional invocation keeps six result arguments')
     if (delayedFormat === 'json') {
-      assert.deepEqual(json, { jskey: 'clickad', value, step: 'clickad', isScroll: 'true', isJump: 'false', behaviorsId: 'delayed' })
+      assert.deepEqual(json, { jskey: 'clickad', value, step: '', isScroll: 'true', isJump: 'false', behaviorsId: 'delayed' })
       assert.deepEqual(legacy.slice(1), ['agreement', '70,80,agreement-one', '', false, false, 'immediate'])
     } else {
       assert.deepEqual(json, { jskey: 'agreement', value: '70,80,agreement-one', step: '', isScroll: 'false', isJump: 'false', behaviorsId: 'immediate' })
-      assert.deepEqual(legacy.slice(1), ['clickad', value, 'clickad', true, false, 'delayed'])
+      assert.deepEqual(legacy.slice(1), ['clickad', value, '', true, false, 'delayed'])
     }
   }
   for (const clickadFormat of ['json', 'legacy']) {
     const secondpageFormat = clickadFormat === 'json' ? 'legacy' : 'json'
-    const clickadValue = '135.132453455,1806.1235454545'
-    const secondpageValue = '200,1600'
+    const clickadValue = '135.132453455,1806.1235454545,ad1'
+    const secondpageValue = '200,1600,null'
     const actual = await run(sources[1], {
       config: config(), elements: [],
       invocations: [
@@ -607,8 +613,8 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     const calls = callResults(actual)
     const json = jsonResult(actual, calls.findIndex(call => call.length === 2))
     const legacy = calls.find(call => call.length === 7)
-    const clickadExpected = ['clickad', clickadValue, 'CLICKAD', true, false, 'failed-clickad']
-    const secondpageExpected = ['secondpage', secondpageValue, 'SECONDPAGE', true, false, 'failed-secondpage']
+    const clickadExpected = ['clickad', clickadValue, '', true, false, 'failed-clickad']
+    const secondpageExpected = ['secondpage', secondpageValue, '', true, false, 'failed-secondpage']
     const jsonExpected = clickadFormat === 'json' ? clickadExpected : secondpageExpected
     assert.deepEqual([json.jskey, json.value, json.step, json.isScroll, json.isJump, json.behaviorsId], [jsonExpected[0], jsonExpected[1], jsonExpected[2], 'true', 'false', jsonExpected[5]])
     assert.deepEqual(legacy.slice(1), clickadFormat === 'legacy' ? clickadExpected : secondpageExpected)

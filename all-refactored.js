@@ -818,7 +818,11 @@ var startAdExposureMonitor = selector => {
 var AdActionRuntime = (() => {
 	const randomItem = list => list[Math.floor(Math.random() * list.length)]
 	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
-	const normalizeAction = action => String(action || '').trim().replace(/[\s_-]+/g, '').toUpperCase()
+	const normalizeAction = action =>
+		String(action || '')
+			.trim()
+			.replace(/[\s_-]+/g, '')
+			.toUpperCase()
 	const isSlideEnabled = slide => slide === true || String(slide).toLowerCase() === 'true'
 	const formatPoint = point => (point ? point.x + ',' + point.y : '')
 	const isPointInViewport = (point, viewport) => point.x >= 0 && point.x <= viewport.maxX && point.y >= 0 && point.y <= viewport.maxY
@@ -1226,9 +1230,8 @@ var AdActionRuntime = (() => {
 
 	function detectHighBanner(context) {
 		const config = context.config.BANNER
-		const action = context.action === 'ACTIONFAIL' ? context.failedAction : context.action
 		if (
-			!['CLICKAD', 'SECONDPAGE'].includes(action) ||
+			!['CLICKAD', 'SECONDPAGE', 'ACTIONFAIL'].includes(context.action) ||
 			!config ||
 			!config.selector ||
 			!(config.slide === false || String(config.slide).toLowerCase() === 'false')
@@ -1456,8 +1459,9 @@ var AdActionRuntime = (() => {
 	const parsePagePoint = value => {
 		if (typeof value !== 'string') return null
 		const parts = value.split(',')
-		if (parts.length !== 2 || parts.some(part => !part.trim())) return null
-		const [x, y] = parts.map(Number)
+		if (parts.length < 2 || parts.length > 3 || !parts[0].trim() || !parts[1].trim()) return null
+		// 第三项为可选元素 ID（也可能是 "null"），只解析前两项并保留完整原值。
+		const [x, y] = parts.slice(0, 2).map(Number)
 		return Number.isFinite(x) && Number.isFinite(y) ? { x, y, position: value } : null
 	}
 
@@ -1467,7 +1471,7 @@ var AdActionRuntime = (() => {
 		context.dom.scrollToPageY(point.y, () => {
 			sendResult(context, {
 				position: point.position,
-				nextStep: context.step,
+				nextStep: '',
 				// value 沿用页面坐标，滚动后保持原值及精度。
 				slide: true,
 				pageFinish: false,
@@ -1533,10 +1537,10 @@ function allACtionJSON(jsonString) {
 // adeffect - 转化
 // exposure - 监听广告曝光
 // actionfail - 动作失败后处理广告遮挡；step 为失败的 jskey，回报 jskey 使用其归一化小写值。
-// 插屏检测规则不变；仅失败动作为 clickad/secondpage 时检测高 banner。
-// 插屏回报 nextStep=irregularinter；高 banner 或滚动后回报 nextStep 使用原 step。
-// 第五个参数 countryCode 保持不变；第六个参数 value 为 actionfail 的原页面坐标字符串 "x,y"。
-// 无遮挡时先滚动使 y 进入视口，再原样回报 value（slide=true）；缺失或无效坐标回报空结果。
+// 先沿用插屏检测，再检测高 banner；actionfail 的高 banner 检测不限制失败动作 step。
+// 插屏回报 nextStep=irregularinter；高 banner 回报 nextStep 使用原 step；无遮挡滚动后回报 nextStep=""。
+// 第五个参数 countryCode 保持不变；第六个参数 value 为原页面坐标 "x,y" 或 "x,y,id"，id 也可为 "null"。
+// 无遮挡时先滚动使 y 进入视口，再完整原样回报 value（slide=true）；缺失或无效坐标回报空结果。
 // JSON 入口：allACtionJSON(jsonString)，接收 jskey/searchText/step/behaviorsId/countryCode/value/isScroll/isJump。
 // isScroll/isJump 可传布尔值或 "true"/"false"，未传时沿用动作配置；具体处理分支的回报标记优先。
 // JSON 调用的 jsResult 只接收一个 JSON 字符串，字段为 jskey/value/step/isScroll/isJump/behaviorsId。

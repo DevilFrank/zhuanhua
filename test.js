@@ -860,7 +860,7 @@ function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', co
     "selector": "div.ad-box",
     "pageFinish": "true",
     "slide": "true",
-    "clickrate": "10",
+    "clickrate": "100",
     "jsSlide": "true"
   },
   "SECONDPAGE": {

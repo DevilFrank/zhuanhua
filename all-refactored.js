@@ -1054,6 +1054,59 @@ var AdActionRuntime = (() => {
 				.filter(Boolean)
 		}
 
+		// 广告先按几何可达性入选，遮挡检测只作用于抽中的元素。
+		const getAdTargets = (selector, slide = defaultSlide) => {
+			if (!selector) return []
+			const { baseSelector, pseudo } = parsePseudoSelector(selector)
+			const { height: docHeight, scrollTop } = getDocumentBounds()
+			return Array.from(document.querySelectorAll(baseSelector)).flatMap(element => {
+				if (!element || !element.isConnected || element.disabled || !hasVisibleStyle(element)) return []
+				const rect = pseudo ? getPseudoElementRect(element, pseudo) : element.getBoundingClientRect()
+				if (!rect || rect.width <= 0 || rect.height <= 0 || !isElementInDocumentRange(rect)) return []
+				let fixed = false
+				for (let node = element; node && node !== document.documentElement; node = node.parentElement) {
+					if (window.getComputedStyle(node).position === 'fixed') fixed = true
+				}
+				const canScroll = isSlideEnabled(slide) && !fixed
+				const left = Math.max(rect.left, 0)
+				const right = Math.min(rect.right, maxViewportX)
+				const top = Math.max(rect.top, canScroll ? -scrollTop : 0)
+				const bottom = Math.min(rect.bottom, canScroll ? docHeight - 1 - scrollTop : maxViewportY)
+				if (right <= left || bottom <= top) return []
+				// 优先取元素中间区域；仅边缘可达时，使用可达的那一部分。
+				const innerLeft = Math.max(left, rect.left + rect.width * 0.2)
+				const innerRight = Math.min(right, rect.right - rect.width * 0.2)
+				const innerTop = Math.max(top, rect.top + rect.height * 0.2)
+				const innerBottom = Math.min(bottom, rect.bottom - rect.height * 0.2)
+				return [{
+					element,
+					rect,
+					bounds: {
+						left: innerRight > innerLeft ? innerLeft : left,
+						right: innerRight > innerLeft ? innerRight : right,
+						top: innerBottom > innerTop ? innerTop : top,
+						bottom: innerBottom > innerTop ? innerBottom : bottom,
+					},
+				}]
+			})
+		}
+
+		const getAdPoint = (target, slide = defaultSlide) => {
+			const { element, bounds } = target
+			let fallback = null
+			for (let i = 0; i < 13; i++) {
+				const point = {
+					x: bounds.left + Math.random() * (bounds.right - bounds.left),
+					y: bounds.top + Math.random() * (bounds.bottom - bounds.top),
+				}
+				if (!fallback) fallback = point
+				if (isPointInViewport(point, viewport) && pointHitsElement(element, point.x, point.y)) return { point, needsScroll: false }
+				if (!isPointInViewport(point, viewport) && isSlideEnabled(slide)) return { point, needsScroll: true }
+			}
+			// 原生滚动沿用页面坐标协议，保留同一个目标交给客户端滚动/失败恢复。
+			return { point: isSlideEnabled(slide) ? fallback : null, needsScroll: true }
+		}
+
 		const toPageCoordinate = (point, slide = defaultSlide) => {
 			const { height: docHeight, scrollTop } = getDocumentBounds()
 			if (!isSlideEnabled(slide)) {
@@ -1107,6 +1160,8 @@ var AdActionRuntime = (() => {
 
 		return {
 			findTargets: getValidElementsWithPointBySelector,
+			findAdTargets: getAdTargets,
+			findAdPoint: getAdPoint,
 			findPoint: findClickablePoint,
 			toCoordinate: toPageCoordinate,
 			getDocumentBounds,
@@ -1355,7 +1410,8 @@ var AdActionRuntime = (() => {
 			const config = context.config[key]
 			const action = key.toLowerCase()
 			const selectors = [config && config.selector, config && config.inputSelector, config && config.buttonSelector].filter(Boolean)
-			const targets = selectors.flatMap(selector => context.dom.findTargets(selector, config && config.slide))
+			const findTargets = action === 'clickad' ? context.dom.findAdTargets : context.dom.findTargets
+			const targets = selectors.flatMap(selector => findTargets(selector, config && config.slide))
 			const uniqueTargets = Array.from(new Map(targets.map(item => [item.element, item])).values())
 			uniqueTargets.forEach(({ element }) => allElements.add(element))
 			const stats = { action, foundElementCount: uniqueTargets.length }
@@ -1429,8 +1485,8 @@ var AdActionRuntime = (() => {
 	const clickTrackTypes = { CLICKAD: '3', BANNER: '6', SECONDPAGE: '9', ASSOCIATIONSEARCH: '8', INTERSTITIAL: '7' }
 	function handleClick(context) {
 		const config = context.actionConfig
-		const targets = context.dom.findTargets(config && config.selector, context.slide)
 		const isAd = context.action === 'CLICKAD'
+		const targets = (isAd ? context.dom.findAdTargets : context.dom.findTargets)(config && config.selector, context.slide)
 		let shouldSkipClick = false
 		if (isAd && targets.length) {
 			const hasClickRate = config.clickrate !== undefined && config.clickrate !== null
@@ -1438,7 +1494,18 @@ var AdActionRuntime = (() => {
 			const randomNum = Math.floor(Math.random() * 100)
 			shouldSkipClick = hasClickRate && randomNum > clickRate * targets.length
 		}
-		const selected = selectTarget(context, shouldSkipClick ? [] : targets)
+		let adTarget = null
+		let needsScroll = false
+		let selected
+		if (isAd && !shouldSkipClick && targets.length) {
+			adTarget = randomItem(targets)
+			const candidate = context.dom.findAdPoint(adTarget, context.slide)
+			needsScroll = candidate.needsScroll
+			const point = candidate.point ? context.dom.toCoordinate(candidate.point, context.slide) : null
+			selected = { element: adTarget.element, elementId: adTarget.element.id || '', point, position: formatPoint(point) }
+		} else {
+			selected = selectTarget(context, isAd || shouldSkipClick ? [] : targets)
+		}
 		const result = { position: selected.point ? selected.position + ',' + (selected.elementId || 'null') : '' }
 		const stats = {
 			action: context.action.toLowerCase(),
@@ -1447,15 +1514,24 @@ var AdActionRuntime = (() => {
 			position: selected.position,
 		}
 		if (isAd) stats.shouldSkipClick = shouldSkipClick
-		track(clickTrackTypes[context.action] || '4', stats)
-		if (isAd && config && isSlideEnabled(config.jsSlide) && selected.point) {
+		if (isAd && config && isSlideEnabled(context.slide) && isSlideEnabled(config.jsSlide) && selected.point) {
 			const { scrollTop } = context.dom.getDocumentBounds()
 			const y = selected.point.y
-			if (y < scrollTop || y > scrollTop + context.viewport.maxY) {
-				context.dom.scrollToPageY(y, () => sendResult(context, result))
+			if (needsScroll || y < scrollTop || y > scrollTop + context.viewport.maxY) {
+				context.dom.scrollToPageY(y, () => {
+					// 滚动后重新检查同一元素；失败时回报空坐标，不改抽其他广告。
+					const refreshed = context.dom.findAdTargets(config.selector, false).find(target => target.element === adTarget.element)
+					const candidate = refreshed ? context.dom.findAdPoint(refreshed, false).point : null
+					const point = candidate ? context.dom.toCoordinate(candidate, context.slide) : null
+					stats.position = formatPoint(point)
+					result.position = point ? stats.position + ',' + (selected.elementId || 'null') : ''
+					track(clickTrackTypes[context.action], stats)
+					sendResult(context, result)
+				})
 				return
 			}
 		}
+		track(clickTrackTypes[context.action] || '4', stats)
 		return result
 	}
 

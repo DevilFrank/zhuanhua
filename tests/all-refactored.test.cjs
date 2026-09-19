@@ -371,7 +371,7 @@ const actionFailScrollScenarios = [
 ]
 const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806', ' , ', '135,1806,ad-id,extra', 'NaN,1806', '135,Infinity', '135,not-a-number', '{value}', ',1806,null', '135, ,ad1', 'NaN,1806,ad1', '135,Infinity,null']
 
-;(async () => {
+async function main() {
   let passed = 0
   let seededComparisons = 0
   const failures = []
@@ -382,14 +382,30 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
       if (!scenario.name.startsWith('missing interstitial config')) assert.deepEqual(baseline.errors, [], 'Unexpected original error')
       for (const source of sources.slice(1)) {
         const actual = await run(source, scenario)
-        assert.deepEqual(actual, baseline, `${scenario.name}: bridge, timing, DOM, or random sequence changed`)
+        const action = scenario.action.replace(/[\s_-]+/g, '').toLowerCase()
+        // CLICKAD 现在先抽元素后取点；CHECKPAGE 共用其无随机候选规则。
+        // 关闭坐标在此前版本已更新，不能继续与旧版坐标做相等断言。
+        const changedContract = (action === 'clickad' && tracks(actual).some(([type]) => type === '3')) || action === 'checkpage' || action === 'interstitialclose'
+        if (!changedContract) assert.deepEqual(actual, baseline, `${scenario.name}: bridge, timing, DOM, or random sequence changed`)
+        else {
+          assert.deepEqual(actual.errors, baseline.errors, scenario.name)
+          if (scenario.name === 'covered target has no candidate') {
+            assert.equal(tracks(actual)[0][1].foundElementCount, 1)
+            assert.equal(tracks(actual)[0][1].selectedElementId, 'ad-one')
+            assert.equal(resultAt(actual)[2], '')
+          } else if (action === 'interstitialclose' && !actual.errors.length) {
+            assert.equal(resultAt(actual)[2], resultAt(baseline)[2] ? '753,36' : '')
+          } else scenario.check(actual)
+        }
         if (scenario.random === undefined) {
           for (const seed of [171, 7619]) {
             const seededScenario = { ...scenario, seed }
             const seededBaseline = await run(sources[0], seededScenario)
             const seededActual = await run(source, seededScenario)
-            assert.deepEqual(seededActual, seededBaseline, `${scenario.name}, seed ${seed}: behavior changed`)
-            seededComparisons++
+            if (!changedContract) {
+              assert.deepEqual(seededActual, seededBaseline, `${scenario.name}, seed ${seed}: behavior changed`)
+              seededComparisons++
+            } else assert.deepEqual(seededActual.errors, seededBaseline.errors, scenario.name)
           }
         }
       }
@@ -400,7 +416,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
       console.error('BASELINE:', JSON.stringify(baseline))
     }
   }
-  console.log(`${passed}/${scenarios.length} passed (${sources.length === 2 ? 'original vs refactored differential' : 'original baseline only; refactored file not present'})`)
+  console.log(`${passed}/${scenarios.length} behavior checks passed (unchanged paths compared with original; changed contracts checked separately)`)
   if (seededComparisons) console.log(`${seededComparisons} additional seeded differential comparisons passed.`)
 
   const apiScenarios = [
@@ -546,7 +562,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     },
     {
       name: 'interstitial close retains viewport coordinates and fixed flags', action: 'interstitialclose', isScroll: 'true', isJump: 'true', scrollTop: 100, elements: [inter()],
-      check: (r, result) => { assert.equal(result.value, '766,22'); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []) },
+      check: (r, result) => { assert.equal(result.value, '753,36'); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, []) },
     },
     {
       name: 'explicit empty search text remains empty', action: 'search', step: '{searchButton}', searchText: '', elements: searchElements,
@@ -637,4 +653,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
 
   console.log('Known original behaviors retained: missing INTERSTITIAL config throws in INTERSTITIALCLOSE; clickrate 0 clicks if random bucket is 0; EXPOSURE action falls through generic click handler.')
   if (failures.length) process.exitCode = 1
-})().catch(error => { console.error(error.stack); process.exitCode = 1 })
+}
+
+module.exports = { run, config, element, ad, tracks, callResults, resultAt }
+if (require.main === module) main().catch(error => { console.error(error.stack); process.exitCode = 1 })

@@ -1414,9 +1414,12 @@ var AdActionRuntime = (() => {
 		const targets = selector ? getInterstitialCandidates(context, false) : []
 		let position = ''
 		if (targets.length) {
+			const padding = 2
+			const x = window.innerWidth - 24 - 46 + padding + Math.random() * (46 - padding * 2)
+			const y = 24 + padding + Math.random() * (24 - padding * 2)
 			position = formatPoint({
-				x: window.innerWidth - 10 - 48 + Math.random() * 48,
-				y: 10 + Math.random() * 24,
+				x,
+				y,
 			})
 			track('2', { action: context.action.toLowerCase(), position })
 		}
@@ -1466,15 +1469,17 @@ var AdActionRuntime = (() => {
 	}
 
 	function handleActionFail(context) {
+		const nextStep = context.failedAction === 'ADEFFECT' ? 'adeffect' : ''
 		const point = parsePagePoint(context.value)
-		if (!point) return {}
+		if (!point) return { nextStep }
+		const { slide = '', pageFinish = '' } = context.config[context.failedAction] || {}
 		context.dom.scrollToPageY(point.y, () => {
 			sendResult(context, {
 				position: point.position,
-				nextStep: '',
+				nextStep,
 				// value 沿用页面坐标，滚动后保持原值及精度。
-				slide: true,
-				pageFinish: false,
+				slide,
+				pageFinish,
 			})
 		})
 	}
@@ -1539,8 +1544,10 @@ function allACtionJSON(jsonString) {
 // actionfail - 动作失败后处理广告遮挡；step 为失败的 jskey，回报 jskey 使用其归一化小写值。
 // 先沿用插屏检测，再检测高 banner；actionfail 的高 banner 检测不限制失败动作 step。
 // 插屏回报 nextStep=irregularinter；高 banner 回报 nextStep 使用原 step；无遮挡滚动后回报 nextStep=""。
+// 无遮挡且失败动作为 adeffect 时，回报 nextStep="adeffect"。
 // 第五个参数 countryCode 保持不变；第六个参数 value 为原页面坐标 "x,y" 或 "x,y,id"，id 也可为 "null"。
-// 无遮挡时先滚动使 y 进入视口，再完整原样回报 value（slide=true）；缺失或无效坐标回报空结果。
+// 无遮挡时先滚动使 y 进入视口，再完整原样回报 value；slide/pageFinish 读取失败动作配置，缺失时为空字符串。
+// 缺失或无效坐标回报空坐标结果。
 // JSON 入口：allACtionJSON(jsonString)，接收 jskey/searchText/step/behaviorsId/countryCode/value/isScroll/isJump。
 // isScroll/isJump 可传布尔值或 "true"/"false"，未传时沿用动作配置；具体处理分支的回报标记优先。
 // JSON 调用的 jsResult 只接收一个 JSON 字符串，字段为 jskey/value/step/isScroll/isJump/behaviorsId。

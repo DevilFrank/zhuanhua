@@ -40,7 +40,7 @@ const jsonResult = (actual, index = 0) => {
 const assertActionFailResult = (actual, json, expected, name) => {
   const [jskey, value, step, slide, pageFinish, behaviorsId] = expected
   if (json) {
-    assert.deepEqual(jsonResult(actual), { jskey, value, step, isScroll: slide === true ? 'true' : 'false', isJump: pageFinish === true ? 'true' : 'false', behaviorsId }, name)
+    assert.deepEqual(jsonResult(actual), { jskey, value, step, isScroll: String(slide).toLowerCase() === 'true' ? 'true' : 'false', isJump: String(pageFinish).toLowerCase() === 'true' ? 'true' : 'false', behaviorsId }, name)
   } else {
     assert.deepEqual(resultAt(actual).slice(1), expected, name)
   }
@@ -316,6 +316,9 @@ add('adeffect checkbox toggles and dispatches', { action: 'adeffect', step: 'ful
 // ACTIONFAIL is a new action, so assert its contract directly rather than compare to all.js.
 const actionFailScenarios = [
   { name: 'interstitial handler', elements: [inter()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'failed adeffect still delegates to interstitial handler', step: 'adeffect', value: '135,1806,null', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
+  { name: 'failed adeffect high banner preserves original step', step: ' Ad_effect ', expectedAction: 'adeffect', value: '135,1806,null', elements: [banner()], expectedNextStep: ' Ad_effect ', expectedPosition: '50.5,415.5,banner-one', banner: true },
+  { name: 'failed adeffect without coordinates reports retry step without scrolling', step: 'adeffect', elements: [], expectedNextStep: 'adeffect', expectedPosition: '' },
   { name: 'interstitial takes priority over high banner', elements: [inter(), banner()], expectedNextStep: 'irregularinter', expectedPosition: '' },
   { name: 'top banner retries clickad', elements: [banner()], expectedNextStep: 'clickad', expectedPosition: '50.5,415.5,banner-one', banner: true },
   { name: 'bottom banner retries secondpage', step: 'secondpage', elements: [banner(400, 200, { parentStyle: { bottom: '0px' } })], expectedNextStep: 'secondpage', expectedPosition: '50.5,185.5,banner-one', banner: true },
@@ -342,6 +345,8 @@ const actionFailScenarios = [
 ]
 
 const actionFailScrollScenarios = [
+  { name: 'failed adeffect reports adeffect after scrolling', step: 'adeffect', value: '134.52682614712,1440.448002894263,ad1', expectedNextStep: 'adeffect', expectedFlags: [true, false], expectedScrollTop: 1140.448002894263 },
+  { name: 'normalizes adeffect retry step and preserves null ID', step: ' Ad_effect ', expectedAction: 'adeffect', value: '134.52682614712,1440.448002894263,null', expectedNextStep: 'adeffect', expectedFlags: [true, false], expectedScrollTop: 1140.448002894263 },
   { name: 'replays original page coordinates after scroll', value: '135.132453455,1806.1235454545', expectedScrollTop: 1506.1235454545 },
   { name: 'preserves coordinate string precision', value: '135.13245345500000,1806.12354545450000', expectedScrollTop: 1506.1235454545 },
   ...['ad1', 'null', ''].map(id => ({ name: 'preserves three-part coordinates with ' + (id || 'empty ID'), value: '134.52682614712,1440.448002894263,' + id, searchText: 'iphone', behaviorsId: '59304010', expectedScrollTop: 1140.448002894263 })),
@@ -349,9 +354,18 @@ const actionFailScrollScenarios = [
   { name: 'clamps scroll near document bottom', value: '135,2399', expectedScrollTop: 1800 },
   { name: 'clamps scroll near document top', value: '135,100', expectedScrollTop: 0 },
   { name: 'zero coordinates remain valid', value: '0,0', expectedScrollTop: 0 },
-  { name: 'recovery does not require failed action selectors', value: '135,1806', config: {}, expectedScrollTop: 1506 },
-  { name: 'normalizes failed action and clears nextStep while preserving page coordinates', value: '135,1806', action: ' Action_fail ', step: ' Second_page ', expectedAction: 'secondpage', config: config({ ACTIONFAIL: { slide: false, pageFinish: true } }), expectedScrollTop: 1506 },
-  ...['search', 'agreement', 'checkpage', 'interstitial', 'interstitialclose', 'exposure', 'unknown', ''].map(step => ({ name: 'failed ' + (step || 'missing action') + ' replays coordinates when unobstructed', step, value: '135,1806', expectedScrollTop: 1506 })),
+  { name: 'recovery does not require failed action selectors', value: '135,1806', config: {}, expectedFlags: ['', ''], expectedScrollTop: 1506 },
+  { name: 'normalizes failed action and uses its flags instead of ACTIONFAIL flags', value: '135,1806', action: ' Action_fail ', step: ' Second_page ', expectedAction: 'secondpage', config: config({ ACTIONFAIL: { slide: true, pageFinish: false } }), expectedFlags: [false, true], expectedScrollTop: 1506 },
+  ...[
+    ['search', [false, true]], ['agreement', [false, false]], ['checkpage', ['', '']],
+    ['interstitial', [false, false]], ['interstitialclose', [false, false]],
+    ['exposure', ['', '']], ['unknown', ['', '']], ['', ['', '']],
+  ].map(([step, expectedFlags]) => ({ name: 'failed ' + (step || 'missing action') + ' replays coordinates when unobstructed', step, value: '135,1806', expectedFlags, expectedScrollTop: 1506 })),
+  { name: 'failed clickad flags take priority over outer flags and JSON input flags', value: '135,1806,ad1', config: config({ CLICKAD: { slide: false, pageFinish: true }, ACTIONFAIL: { slide: true, pageFinish: false } }), isScroll: true, isJump: false, expectedFlags: [false, true], expectedScrollTop: 1506 },
+  { name: 'failed action string flags preserve legacy values and normalize JSON values', value: '135,1806,null', config: config({ CLICKAD: { slide: 'TRUE', pageFinish: 'false' }, ACTIONFAIL: { slide: false, pageFinish: true } }), isScroll: false, isJump: true, expectedFlags: ['TRUE', 'false'], expectedScrollTop: 1506 },
+  { name: 'missing failed action config does not inherit outer flags', step: 'unknown', value: '135,1806', config: config({ ACTIONFAIL: { slide: true, pageFinish: true } }), isScroll: true, isJump: true, expectedFlags: ['', ''], expectedScrollTop: 1506 },
+  { name: 'missing failed action pageFinish does not inherit outer flags', value: '135,1806', config: config({ CLICKAD: { slide: false }, ACTIONFAIL: { slide: true, pageFinish: true } }), isScroll: true, isJump: true, expectedFlags: [false, ''], expectedScrollTop: 1506 },
+  { name: 'missing failed action slide does not inherit outer flags', value: '135,1806', config: config({ CLICKAD: { pageFinish: true }, ACTIONFAIL: { slide: true, pageFinish: false } }), isScroll: true, isJump: false, expectedFlags: ['', true], expectedScrollTop: 1506 },
   { name: 'smooth scrolling fallback still reports exactly once', value: '135,1806', smoothScrollThrows: true, expectedScrollTop: 1506 },
   { name: 'six-argument bootstrap forwards value', value: '135.132453455,1806.1235454545', countryCode: 'GB', bootstrap: true, expectedScrollTop: 1506.1235454545 },
 ]
@@ -443,7 +457,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
       assert.deepEqual(actual.errors, [], test.name)
       assert.equal(actual.syncCallCount, 0, test.name + ': do not report before scrolling finishes')
       assert.equal(callResults(actual).length, 1, test.name + ': exactly one callback')
-      assertActionFailResult(actual, json, [test.expectedAction ?? scenario.step, test.value, '', true, false, scenario.behaviorsId ?? 'offline-behavior'], test.name)
+      assertActionFailResult(actual, json, [test.expectedAction ?? scenario.step, test.value, test.expectedNextStep ?? '', ...(test.expectedFlags ?? [false, false]), scenario.behaviorsId ?? 'offline-behavior'], test.name)
       assert.deepEqual(actual.scrolls, [test.expectedScrollTop], test.name)
       assert.deepEqual(tracks(actual), [], test.name + ': no ordinary click or banner tracking')
       assert.deepEqual(actual.events, [], test.name)
@@ -510,7 +524,7 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     {
       name: 'actionfail asynchronously replays precise page coordinate string', action: 'actionfail', step: 'clickad',
       value: '135.13245345500000,1806.12354545450000', isScroll: 'false', isJump: 'true',
-      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '135.13245345500000,1806.12354545450000'); assert.equal(result.step, ''); assert.equal(result.isScroll, 'true'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, [1506.1235454545]); assert.equal(r.randomCount, 0) },
+      check: (r, result) => { assert.equal(r.syncResultCount, 0); assert.equal(result.value, '135.13245345500000,1806.12354545450000'); assert.equal(result.step, ''); assert.equal(result.isScroll, 'false'); assert.equal(result.isJump, 'false'); assert.deepEqual(r.scrolls, [1506.1235454545]); assert.equal(r.randomCount, 0) },
     },
     {
       name: 'jsSlide callback retains JSON protocol',
@@ -587,11 +601,11 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     const legacy = callResults(actual)[1 - jsonIndex]
     assert.equal(legacy.length, 7, 'Concurrent positional invocation keeps six result arguments')
     if (delayedFormat === 'json') {
-      assert.deepEqual(json, { jskey: 'clickad', value, step: '', isScroll: 'true', isJump: 'false', behaviorsId: 'delayed' })
+      assert.deepEqual(json, { jskey: 'clickad', value, step: '', isScroll: 'false', isJump: 'false', behaviorsId: 'delayed' })
       assert.deepEqual(legacy.slice(1), ['agreement', '70,80,agreement-one', '', false, false, 'immediate'])
     } else {
       assert.deepEqual(json, { jskey: 'agreement', value: '70,80,agreement-one', step: '', isScroll: 'false', isJump: 'false', behaviorsId: 'immediate' })
-      assert.deepEqual(legacy.slice(1), ['clickad', value, '', true, false, 'delayed'])
+      assert.deepEqual(legacy.slice(1), ['clickad', value, '', false, false, 'delayed'])
     }
   }
   for (const clickadFormat of ['json', 'legacy']) {
@@ -613,10 +627,10 @@ const invalidActionFailValues = ['', undefined, null, 123, '135', '135,', ',1806
     const calls = callResults(actual)
     const json = jsonResult(actual, calls.findIndex(call => call.length === 2))
     const legacy = calls.find(call => call.length === 7)
-    const clickadExpected = ['clickad', clickadValue, '', true, false, 'failed-clickad']
-    const secondpageExpected = ['secondpage', secondpageValue, '', true, false, 'failed-secondpage']
+    const clickadExpected = ['clickad', clickadValue, '', false, false, 'failed-clickad']
+    const secondpageExpected = ['secondpage', secondpageValue, '', false, true, 'failed-secondpage']
     const jsonExpected = clickadFormat === 'json' ? clickadExpected : secondpageExpected
-    assert.deepEqual([json.jskey, json.value, json.step, json.isScroll, json.isJump, json.behaviorsId], [jsonExpected[0], jsonExpected[1], jsonExpected[2], 'true', 'false', jsonExpected[5]])
+    assert.deepEqual([json.jskey, json.value, json.step, json.isScroll, json.isJump, json.behaviorsId], [jsonExpected[0], jsonExpected[1], jsonExpected[2], String(jsonExpected[3]), String(jsonExpected[4]), jsonExpected[5]])
     assert.deepEqual(legacy.slice(1), clickadFormat === 'legacy' ? clickadExpected : secondpageExpected)
   }
   console.log(`${jsonScenarios.length} JSON action checks, ${invalidJSONInputs.length} invalid JSON input checks, and 4 mixed-protocol async checks passed.`)

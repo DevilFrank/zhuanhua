@@ -1,1061 +1,1200 @@
 var ADS_RECOGNITION_CONFIG = {
-	fieldSelector: 'input, textarea, select',
-	buttonSelector: 'button, input[type="submit"], input[type="button"], [role="button"], a',
-	candidateSelector:
-		'form, [role="form"], dialog, [role="dialog"], section, main, aside, div[class*="form"], div[id*="form"], div[class*="modal"], div[id*="modal"], div[class*="popup"], div[id*="popup"], div[class*="signup"], div[class*="register"], div[class*="lead"]',
-	positiveKeywords: ['quote', 'apply', 'eligibility', 'estimate', 'lead', 'contact', 'request', 'started'],
-	negativeKeywords: ['search', 'newsletter', 'subscribe', 'login', 'log in', 'sign in', 'password', 'forgot password'],
-	searchHints: ['search', 'query', 'keyword', 'site search', 'find'],
-	submitKeywords: [
-		'submit',
-		'continue',
-		'next',
-		'apply',
-		'claim',
-		'get started',
-		'get quote',
-		'check eligibility',
-		'sign up',
-		'register',
-		'see results',
-		'start',
-		'join now',
-		'continue now',
-		'get my quote',
-		'get my results',
-		'check now',
-		'start now',
-		'next step',
-		'proceed',
-		'calculate',
-		'find out',
-		'get matched',
-		'show me',
-		'show results',
-		'get result',
-		'get results',
-		'enviar',
-		'continuar',
-		'siguiente',
+		fieldSelector: 'input, textarea, select',
+		buttonSelector: 'button, input[type="submit"], input[type="button"], [role="button"], a',
+		candidateSelector:
+			'form, [role="form"], dialog, [role="dialog"], section, main, aside, div[class*="form"], div[id*="form"], div[class*="modal"], div[id*="modal"], div[class*="popup"], div[id*="popup"], div[class*="signup"], div[class*="register"], div[class*="lead"]',
+		positiveKeywords: ['quote', 'apply', 'eligibility', 'estimate', 'lead', 'contact', 'request', 'started'],
+		negativeKeywords: ['search', 'newsletter', 'subscribe', 'login', 'log in', 'sign in', 'password', 'forgot password'],
+		searchHints: ['search', 'query', 'keyword', 'site search', 'find'],
+		submitKeywords: [
+			'submit',
+			'continue',
+			'next',
+			'apply',
+			'claim',
+			'get started',
+			'get quote',
+			'check eligibility',
+			'sign up',
+			'register',
+			'see results',
+			'start',
+			'join now',
+			'continue now',
+			'get my quote',
+			'get my results',
+			'check now',
+			'start now',
+			'next step',
+			'proceed',
+			'calculate',
+			'find out',
+			'get matched',
+			'show me',
+			'show results',
+			'get result',
+			'get results',
+			'enviar',
+			'continuar',
+			'siguiente',
+		],
+		maxCandidates: 5,
+		maxFieldAncestorDepth: 5,
+	},
+	ADS_FORM_STEPS = [
+		'fullName',
+		'age',
+		'telephone',
+		'temporaryMail',
+		'address',
+		'city',
+		'state',
+		'zipCode',
+		'birthday',
+		'gender',
+		'companyName',
+		'occupation',
+		'monthlySalary',
+		'employmentStatus',
 	],
-	maxCandidates: 5,
-	maxFieldAncestorDepth: 5,
-}
-var ADS_FORM_STEPS = [
-	'fullName',
-	'age',
-	'telephone',
-	'temporaryMail',
-	'address',
-	'city',
-	'state',
-	'zipCode',
-	'birthday',
-	'gender',
-	'companyName',
-	'occupation',
-	'monthlySalary',
-	'employmentStatus',
-]
-var ADS_FORM_DATA_BASE_URL = 'https://adcenter.airmobyte.com/prod-api/common/getFormDataInfo?countryCode='
-var ADS_FIELD_ALIASES = {
-	fullName: ['name', 'full name', 'fullname', 'first name', 'last name', 'your name', '姓名', 'nombre', 'contact name'],
-	age: ['age', 'years old', 'edad', '年龄'],
-	telephone: ['phone', 'mobile', 'tel', 'telephone', 'phone number', 'mobile number', '电话', '手机', 'telefono', 'celular'],
-	temporaryMail: ['email', 'e-mail', 'mail', 'email address', 'temporary mail', 'correo'],
-	address: ['address', 'street', 'street address', 'address line 1', 'direccion'],
-	city: ['city', 'town', 'ciudad'],
-	state: ['state', 'province', 'region', 'estado'],
-	zipCode: ['zip', 'zipcode', 'zip code', 'postal', 'postal code', 'postcode'],
-	birthday: ['birthday', 'birth date', 'birthdate', 'date of birth', 'dob', 'fecha de nacimiento'],
-	gender: ['gender', 'sex', 'sexo'],
-	companyName: ['company', 'company name', 'employer', 'business name'],
-	occupation: ['occupation', 'job', 'job title', 'profession', 'work'],
-	monthlySalary: ['salary', 'monthly salary', 'income', 'monthly income', 'earnings'],
-	employmentStatus: ['employment', 'employment status', 'work status'],
-}
-var ADS_PRIMARY_FORM_STEPS = ['fullName', 'temporaryMail', 'telephone']
-var ADS_SUPPORTING_FORM_STEPS = [
-	'age',
-	'address',
-	'city',
-	'state',
-	'zipCode',
-	'birthday',
-	'gender',
-	'companyName',
-	'occupation',
-	'monthlySalary',
-	'employmentStatus',
-]
-var ADS_NON_FIELD_INPUT_TYPES = ['hidden', 'submit', 'button', 'reset', 'image', 'file']
-var adsNormalizeSpace = value =>
-	String(value || '')
-		.replace(/\s+/g, ' ')
-		.trim()
-var adsNormalizeText = value =>
-	adsNormalizeSpace(value)
-		.toLowerCase()
-		.normalize('NFD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
-		.trim()
-var adsQueryAll = (root, selector) => Array.from(root?.querySelectorAll?.(selector) || [])
-var adsIsVisible = element => {
-	if (!element || typeof element.getBoundingClientRect !== 'function') return false
-	const view = element.ownerDocument?.defaultView || window
-	const rect = element.getBoundingClientRect()
-	const style = view.getComputedStyle(element)
-	return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none'
-}
-var adsTextMatches = (text, keywords, exactScore, includeScore) => {
-	const normalizedText = adsNormalizeText(text)
-	return keywords.reduce((score, keyword) => {
-		const normalizedKeyword = adsNormalizeText(keyword)
-		if (!normalizedKeyword) return score
-		if (normalizedText === normalizedKeyword) return Math.max(score, exactScore)
-		return normalizedText.includes(normalizedKeyword) ? Math.max(score, includeScore) : score
-	}, 0)
-}
-var adsGetTextByIds = (element, attributeName) =>
-	String(element.getAttribute(attributeName) || '')
-		.split(/\s+/)
-		.map(id => id && element.ownerDocument.getElementById(id))
-		.filter(Boolean)
-		.map(item => adsNormalizeSpace(item.textContent))
-		.filter(Boolean)
-		.join(' | ')
-var getAdsDataText = element =>
-	[
-		element.getAttribute('data-testid'),
-		element.getAttribute('data-test'),
-		element.getAttribute('data-cy'),
-		element.getAttribute('data-name'),
-		element.getAttribute('data-label'),
-		element.getAttribute('data-placeholder'),
-	].join(' ')
-var getAdsFieldLabel = element => {
-	const parentLabel = element.closest('label')
-	if (parentLabel) return adsNormalizeSpace(parentLabel.textContent)
-	const labels = element.labels ? Array.from(element.labels) : []
-	if (labels.length)
-		return labels
-			.map(label => adsNormalizeSpace(label.textContent))
+	ADS_FORM_DATA_BASE_URL = 'https://adcenter.airmobyte.com/prod-api/common/getFormDataInfo?countryCode=',
+	ADS_FIELD_ALIASES = {
+		fullName: ['name', 'full name', 'fullname', 'first name', 'last name', 'your name', '姓名', 'nombre', 'contact name'],
+		age: ['age', 'years old', 'edad', '年龄'],
+		telephone: ['phone', 'mobile', 'tel', 'telephone', 'phone number', 'mobile number', '电话', '手机', 'telefono', 'celular'],
+		temporaryMail: ['email', 'e-mail', 'mail', 'email address', 'temporary mail', 'correo'],
+		address: ['address', 'street', 'street address', 'address line 1', 'direccion'],
+		city: ['city', 'town', 'ciudad'],
+		state: ['state', 'province', 'region', 'estado'],
+		zipCode: ['zip', 'zipcode', 'zip code', 'postal', 'postal code', 'postcode'],
+		birthday: ['birthday', 'birth date', 'birthdate', 'date of birth', 'dob', 'fecha de nacimiento'],
+		gender: ['gender', 'sex', 'sexo'],
+		companyName: ['company', 'company name', 'employer', 'business name'],
+		occupation: ['occupation', 'job', 'job title', 'profession', 'work'],
+		monthlySalary: ['salary', 'monthly salary', 'income', 'monthly income', 'earnings'],
+		employmentStatus: ['employment', 'employment status', 'work status'],
+	},
+	ADS_PRIMARY_FORM_STEPS = ['fullName', 'temporaryMail', 'telephone'],
+	ADS_SUPPORTING_FORM_STEPS = [
+		'age',
+		'address',
+		'city',
+		'state',
+		'zipCode',
+		'birthday',
+		'gender',
+		'companyName',
+		'occupation',
+		'monthlySalary',
+		'employmentStatus',
+	],
+	ADS_NON_FIELD_INPUT_TYPES = ['hidden', 'submit', 'button', 'reset', 'image', 'file'],
+	adsNormalizeSpace = e =>
+		String(e || '')
+			.replace(/\s+/g, ' ')
+			.trim(),
+	adsNormalizeText = e =>
+		adsNormalizeSpace(e)
+			.toLowerCase()
+			.normalize('NFD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+			.trim(),
+	adsQueryAll = (e, t) => Array.from(e?.querySelectorAll?.(t) || []),
+	adsIsVisible = e => {
+		if (!e || 'function' != typeof e.getBoundingClientRect) return !1
+		const t = e.ownerDocument?.defaultView || window,
+			n = e.getBoundingClientRect(),
+			o = t.getComputedStyle(e)
+		return n.width > 0 && n.height > 0 && 'hidden' !== o.visibility && 'none' !== o.display
+	},
+	adsTextMatches = (e, t, n, o) => {
+		const i = adsNormalizeText(e)
+		return t.reduce((e, t) => {
+			const r = adsNormalizeText(t)
+			return r ? (i === r ? Math.max(e, n) : i.includes(r) ? Math.max(e, o) : e) : e
+		}, 0)
+	},
+	adsGetTextByIds = (e, t) =>
+		String(e.getAttribute(t) || '')
+			.split(/\s+/)
+			.map(t => t && e.ownerDocument.getElementById(t))
+			.filter(Boolean)
+			.map(e => adsNormalizeSpace(e.textContent))
+			.filter(Boolean)
+			.join(' | '),
+	getAdsDataText = e =>
+		[
+			e.getAttribute('data-testid'),
+			e.getAttribute('data-test'),
+			e.getAttribute('data-cy'),
+			e.getAttribute('data-name'),
+			e.getAttribute('data-label'),
+			e.getAttribute('data-placeholder'),
+		].join(' '),
+	getAdsFieldLabel = e => {
+		const t = e.closest('label')
+		if (t) return adsNormalizeSpace(t.textContent)
+		const n = e.labels ? Array.from(e.labels) : []
+		if (n.length)
+			return n
+				.map(e => adsNormalizeSpace(e.textContent))
+				.filter(Boolean)
+				.join(' | ')
+		if (!e.id) return adsGetTextByIds(e, 'aria-labelledby')
+		const o = Array.from(e.ownerDocument.querySelectorAll('label')).find(t => t.htmlFor === e.id)
+		return o ? adsNormalizeSpace(o.textContent) : adsGetTextByIds(e, 'aria-labelledby')
+	},
+	getAdsWrapperText = e => {
+		let t = e.parentElement
+		for (let e = 0; t && e < 3; e += 1, t = t.parentElement) {
+			const e = adsNormalizeSpace(t.textContent)
+			if (e && e.length <= 180) return e
+		}
+		return ''
+	},
+	getAdsNearbyText = e =>
+		[
+			e?.previousElementSibling?.textContent,
+			e?.nextElementSibling?.textContent,
+			e?.parentElement?.previousElementSibling?.textContent,
+			e?.parentElement?.nextElementSibling?.textContent,
+			adsGetTextByIds(e, 'aria-describedby'),
+		]
+			.map(adsNormalizeSpace)
 			.filter(Boolean)
 			.join(' | ')
-	if (!element.id) return adsGetTextByIds(element, 'aria-labelledby')
-	const label = Array.from(element.ownerDocument.querySelectorAll('label')).find(item => item.htmlFor === element.id)
-	return label ? adsNormalizeSpace(label.textContent) : adsGetTextByIds(element, 'aria-labelledby')
-}
-var getAdsWrapperText = element => {
-	let current = element.parentElement
-	for (let depth = 0; current && depth < 3; depth += 1, current = current.parentElement) {
-		const text = adsNormalizeSpace(current.textContent)
-		if (text && text.length <= 180) return text
-	}
-	return ''
-}
-var getAdsNearbyText = element =>
-	[
-		element?.previousElementSibling?.textContent,
-		element?.nextElementSibling?.textContent,
-		element?.parentElement?.previousElementSibling?.textContent,
-		element?.parentElement?.nextElementSibling?.textContent,
-		adsGetTextByIds(element, 'aria-describedby'),
-	]
-		.map(adsNormalizeSpace)
-		.filter(Boolean)
-		.join(' | ')
-		.slice(0, 240)
-var summarizeAdsClickable = element => ({
-	tagName: element.tagName.toLowerCase(),
-	type: String(element.getAttribute('type') || '').toLowerCase(),
-	text: adsNormalizeSpace(element.textContent || element.value || ''),
-	ariaLabel: element.getAttribute('aria-label') || '',
-	title: element.getAttribute('title') || '',
-	href: element.getAttribute('href') || '',
-	name: element.getAttribute('name') || '',
-	id: element.id || '',
-	className: adsNormalizeSpace(element.className),
-	download: element.hasAttribute('download'),
-	visible: adsIsVisible(element),
-})
-var getAdsFieldSummary = element => ({
-	tagName: element.tagName.toLowerCase(),
-	type: String(element.getAttribute('type') || '').toLowerCase(),
-	name: element.getAttribute('name') || '',
-	id: element.id || '',
-	className: adsNormalizeSpace(element.className),
-	placeholder: element.getAttribute('placeholder') || '',
-	ariaLabel: element.getAttribute('aria-label') || '',
-	autocomplete: element.getAttribute('autocomplete') || '',
-	labelText: getAdsFieldLabel(element),
-	nearbyText: getAdsNearbyText(element),
-	wrapperText: getAdsWrapperText(element),
-	dataText: getAdsDataText(element),
-	inputMode: element.getAttribute('inputmode') || '',
-	visible: adsIsVisible(element),
-	disabled: Boolean(element.disabled),
-	readOnly: Boolean(element.readOnly),
-	required: Boolean(element.required),
-})
-var getAdsVisibleFields = (root, config) =>
-	adsQueryAll(root, config.fieldSelector)
-		.map(field => ({ element: field, summary: getAdsFieldSummary(field) }))
-		.filter(({ summary }) => summary.visible && !summary.disabled && !summary.readOnly && !ADS_NON_FIELD_INPUT_TYPES.includes(summary.type))
-var adsUniqueElements = elements => {
-	const used = new Set()
-	return elements.filter(element => {
-		if (!element || used.has(element)) return false
-		used.add(element)
-		return true
-	})
-}
-var adsElementContains = (container, child) => container === child || Boolean(container?.contains?.(child))
-var adsGetRect = element => (element && typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : null)
-var getAdsEntriesBounds = entries => {
-	const rects = entries.map(({ element }) => adsGetRect(element)).filter(rect => rect && rect.width > 0 && rect.height > 0)
-	if (!rects.length) return null
-	return {
-		left: Math.min(...rects.map(rect => rect.left)),
-		top: Math.min(...rects.map(rect => rect.top)),
-		right: Math.max(...rects.map(rect => rect.right)),
-		bottom: Math.max(...rects.map(rect => rect.bottom)),
-		width: Math.max(...rects.map(rect => rect.right)) - Math.min(...rects.map(rect => rect.left)),
-		height: Math.max(...rects.map(rect => rect.bottom)) - Math.min(...rects.map(rect => rect.top)),
-	}
-}
-var isAdsRootContainer = element => {
-	const tagName = String(element?.tagName || '').toLowerCase()
-	return tagName === 'html' || tagName === 'body'
-}
-var getAdsFieldCandidateContainers = (fieldEntry, config) => {
-	const field = fieldEntry.element
-	const containers = []
-	if (field.form) containers.push(field.form)
-	const semanticContainer = field.closest(config.candidateSelector)
-	if (semanticContainer) containers.push(semanticContainer)
-	let current = field.parentElement
-	for (let depth = 0; current && depth < config.maxFieldAncestorDepth; depth += 1, current = current.parentElement) {
-		if (isAdsRootContainer(current)) break
-		containers.push(current)
-	}
-	return adsUniqueElements(containers).filter(adsIsVisible)
-}
-var getAdsCandidateContainers = (root, fieldEntries, config) =>
-	adsUniqueElements([
-		...adsQueryAll(root, config.candidateSelector),
-		...fieldEntries.flatMap(fieldEntry => getAdsFieldCandidateContainers(fieldEntry, config)),
-	]).filter(element => adsIsVisible(element) && !isAdsRootContainer(element))
-var summarizeAdsCandidate = (element, fieldEntries, config) => {
-	const textBlob = adsNormalizeText(element.textContent)
-	const fieldText = fieldEntries
-		.map(({ summary }) =>
-			[
-				summary.type,
-				summary.name,
-				summary.id,
-				summary.placeholder,
-				summary.ariaLabel,
-				summary.autocomplete,
-				summary.labelText,
-				summary.nearbyText,
-				summary.wrapperText,
-				summary.dataText,
-			].join(' '),
-		)
-		.join(' ')
-	let domDepth = 0
-	for (let parent = element.parentElement; parent; parent = parent.parentElement) domDepth += 1
-	return {
-		tagName: element.tagName.toLowerCase(),
-		id: element.id || '',
-		className: adsNormalizeSpace(element.className),
-		visibleFieldCount: fieldEntries.length,
-		requiredFieldCount: fieldEntries.filter(({ summary }) => summary.required).length,
-		visibleButtonCount: adsQueryAll(element, config.buttonSelector).filter(adsIsVisible).length,
-		hasSubmitKeyword: adsTextMatches(textBlob, config.submitKeywords, 12, 8) > 0,
-		hasSearchLikeField: adsTextMatches(fieldText, config.searchHints, 10, 8) > 0,
-		hasPasswordField: fieldEntries.some(({ summary }) => summary.type === 'password'),
-		hasPositiveKeyword: adsTextMatches(textBlob, config.positiveKeywords, 8, 4) > 0,
-		hasNegativeKeyword: adsTextMatches(textBlob, config.negativeKeywords, 8, 4) > 0,
-		domDepth,
-		textSample: textBlob.slice(0, 160),
-	}
-}
-var getAdsSubmitButtonScore = (summary, config) => {
-	const text = [summary.text, summary.ariaLabel, summary.title, summary.name, summary.id, summary.className].join(' ')
-	return Math.max(summary.type === 'submit' ? 12 : 0, adsTextMatches(text, config.submitKeywords, 14, 9))
-}
-var getAdsButtonProximityScore = (button, fieldEntries) => {
-	const fieldBounds = getAdsEntriesBounds(fieldEntries)
-	const buttonRect = adsGetRect(button)
-	if (!fieldBounds || !buttonRect) return 0
-	const horizontalOverlap = Math.max(0, Math.min(fieldBounds.right, buttonRect.right) - Math.max(fieldBounds.left, buttonRect.left))
-	const overlapRatio = horizontalOverlap / Math.max(1, Math.min(fieldBounds.width, buttonRect.width))
-	const verticalGap = buttonRect.top - fieldBounds.bottom
-	if (verticalGap >= -12 && verticalGap <= 360 && overlapRatio > 0.25) return 6
-	if (Math.abs(verticalGap) <= 520) return 3
-	return -6
-}
-var findAdsSubmitButton = (container, config, fieldEntries = [], root = null) => {
-	let bestButton = null
-	const localButtons = adsQueryAll(container, config.buttonSelector)
-	const rootButtons = root && fieldEntries.length ? adsQueryAll(root, config.buttonSelector) : []
-	const buttons = adsUniqueElements([...localButtons, ...rootButtons])
-	for (const element of buttons) {
-		const summary = summarizeAdsClickable(element)
-		if (!summary.visible) continue
-		const isLocal = adsElementContains(container, element)
-		const isOwnedByForm = element.form && element.form === container
-		if (!isLocal && !isOwnedByForm && !fieldEntries.length) continue
-		let score = getAdsSubmitButtonScore(summary, config)
-		if (isLocal || isOwnedByForm) score += 3
-		else score += getAdsButtonProximityScore(element, fieldEntries)
-		if (score < 8) continue
-		if (score > 0 && (!bestButton || score > bestButton.score)) bestButton = { element, summary, score }
-	}
-	return bestButton || null
-}
-var getAdsFieldMatchScore = (summary, step) => {
-	const text = [
-		summary.name,
-		summary.id,
-		summary.placeholder,
-		summary.ariaLabel,
-		summary.autocomplete,
-		summary.labelText,
-		summary.nearbyText,
-		summary.wrapperText,
-		summary.dataText,
-		summary.className,
-	].join(' ')
-	let score = adsTextMatches(text, ADS_FIELD_ALIASES[step] || [], 18, 10)
-	if (step === 'age' && score > 0 && (summary.type === 'number' || summary.inputMode === 'numeric')) score += 4
-	if (step === 'telephone' && (summary.type === 'tel' || summary.inputMode === 'tel')) score += score > 0 ? 8 : 16
-	if (step === 'temporaryMail' && summary.type === 'email') score += score > 0 ? 8 : 16
-	if (step === 'birthday' && ['date', 'month'].includes(summary.type)) score += score > 0 ? 8 : 12
-	return score
-}
-var matchAdsFormFields = fieldEntries => {
-	const used = new Set()
-	const matchedFields = []
-	ADS_FORM_STEPS.forEach(step => {
-		let best = null
-		fieldEntries.forEach((entry, entryIndex) => {
-			if (used.has(entryIndex)) return
-			const score = getAdsFieldMatchScore(entry.summary, step)
-			if (score >= 8 && (!best || score > best.score)) best = { ...entry, step, entryIndex, score }
-		})
-		if (best) {
-			used.add(best.entryIndex)
-			matchedFields.push(best)
-		}
-	})
-	return matchedFields.sort((left, right) => left.entryIndex - right.entryIndex)
-}
-var getAdsFormFingerprint = (element, fieldEntries, submitButton) =>
-	adsNormalizeText(
-		[
-			element.tagName,
-			element.id,
-			element.className,
-			fieldEntries
-				.map(({ summary }) => [summary.type, summary.name, summary.id, summary.placeholder, summary.ariaLabel].join(':'))
-				.join('|'),
-			submitButton && [submitButton.summary.text, submitButton.summary.id, submitButton.summary.name].join(':'),
-		].join('|'),
-	)
-var scoreAdsCandidate = (summary, formFields, submitButton) => {
-	const matchedSteps = formFields.map(field => field.step)
-	const primaryFieldCount = matchedSteps.filter(step => ADS_PRIMARY_FORM_STEPS.includes(step)).length
-	const supportingFieldCount = matchedSteps.filter(step => ADS_SUPPORTING_FORM_STEPS.includes(step)).length
-	const hasEnoughFieldSignal =
-		formFields.length >= 2 || primaryFieldCount >= 1 || (summary.visibleFieldCount === 1 && summary.hasPositiveKeyword)
-	if (!submitButton || !hasEnoughFieldSignal) {
-		return { total: -10, reasons: [{ label: 'missing-submit-or-field-signal', score: -10 }] }
-	}
-	if (summary.hasPasswordField || (summary.hasSearchLikeField && formFields.length <= 1)) {
-		return { total: -10, reasons: [{ label: 'unsafe-form-kind', score: -10 }] }
-	}
-	if (summary.hasNegativeKeyword && primaryFieldCount <= 1 && !summary.hasPositiveKeyword) {
-		return { total: -10, reasons: [{ label: 'negative-form-context', score: -10 }] }
-	}
-	const reasons = []
-	const addReason = (score, label) => {
-		if (score) reasons.push({ label, score })
-	}
-	let total = summary.tagName === 'form' ? 6 : 2
-	addReason(summary.tagName === 'form' ? 6 : 2, 'container-type')
-	const matchedFieldScore = Math.min(formFields.length, 4) * 5
-	total += matchedFieldScore
-	addReason(matchedFieldScore, 'matched-fields')
-	const primaryFieldScore = Math.min(primaryFieldCount, 2) * 6
-	total += primaryFieldScore
-	addReason(primaryFieldScore, 'primary-fields')
-	const supportingFieldScore = Math.min(supportingFieldCount, 2) * 2
-	total += supportingFieldScore
-	addReason(supportingFieldScore, 'supporting-fields')
-	const requiredFieldScore = summary.requiredFieldCount > 0 ? 2 : 0
-	total += requiredFieldScore
-	addReason(requiredFieldScore, 'required-fields')
-	const balancedFieldScore = summary.visibleFieldCount >= 1 && summary.visibleFieldCount <= 6 ? 4 : 0
-	total += balancedFieldScore
-	addReason(balancedFieldScore, 'balanced-field-count')
-	const positiveKeywordScore = summary.hasPositiveKeyword ? 4 : 0
-	total += positiveKeywordScore
-	addReason(positiveKeywordScore, 'positive-keywords')
-	const submitCopyScore = summary.hasSubmitKeyword ? 4 : 0
-	total += submitCopyScore
-	addReason(submitCopyScore, 'submit-copy')
-	const submitButtonScore = submitButton.score >= 8 ? 6 : 3
-	total += submitButtonScore
-	addReason(submitButtonScore, 'submit-button')
-	const tooManyFieldsPenalty = summary.visibleFieldCount > 8 ? -Math.min((summary.visibleFieldCount - 8) * 2, 12) : 0
-	total += tooManyFieldsPenalty
-	addReason(tooManyFieldsPenalty, 'too-many-fields')
-	const tooManyButtonsPenalty = summary.visibleButtonCount > 6 ? -Math.min((summary.visibleButtonCount - 6) * 2, 8) : 0
-	total += tooManyButtonsPenalty
-	addReason(tooManyButtonsPenalty, 'too-many-buttons')
-	const searchLikePenalty = summary.hasSearchLikeField ? -12 : 0
-	total += searchLikePenalty
-	addReason(searchLikePenalty, 'search-like')
-	const passwordPenalty = summary.hasPasswordField ? -16 : 0
-	total += passwordPenalty
-	addReason(passwordPenalty, 'password-field')
-	const negativeKeywordPenalty = summary.hasNegativeKeyword ? -10 : 0
-	total += negativeKeywordPenalty
-	addReason(negativeKeywordPenalty, 'negative-keywords')
-	const weakFieldPenalty = primaryFieldCount === 0 && supportingFieldCount === 0 ? -8 : 0
-	total += weakFieldPenalty
-	addReason(weakFieldPenalty, 'weak-field-semantics')
-	return { total, reasons, matchedFieldCount: formFields.length, primaryFieldCount, supportingFieldCount }
-}
-function recognizeAdsLandingPage(options = {}) {
-	const root = options.root || window.document
-	if (!root) throw new Error('recognizeAdsLandingPage requires a DOM root')
-	const config = { ...ADS_RECOGNITION_CONFIG, ...(options.overrides || {}) }
-	const allFieldEntries = getAdsVisibleFields(root, config)
-	const candidateContainers = getAdsCandidateContainers(root, allFieldEntries, config)
-	const candidates = candidateContainers
-		.map(element => {
-			const fieldEntries = allFieldEntries.filter(({ element: fieldElement }) => adsElementContains(element, fieldElement))
-			if (!fieldEntries.length) return null
-			const summary = summarizeAdsCandidate(element, fieldEntries, config)
-			const submitButton = findAdsSubmitButton(element, config, fieldEntries, root)
-			const formFields = matchAdsFormFields(fieldEntries)
-			if (!submitButton) return null
-			const scoreDetails = scoreAdsCandidate(summary, formFields, submitButton)
-			return scoreDetails.total > 0
-				? {
-						element,
-						summary,
-						fieldEntries,
-						formFields,
-						matchedFields: formFields,
-						submitButton,
-						fingerprint: getAdsFormFingerprint(element, fieldEntries, submitButton),
-						score: scoreDetails.total,
-						scoreDetails,
-					}
-				: null
-		})
-		.filter(Boolean)
-		.sort((left, right) => right.score - left.score)
-		.slice(0, config.maxCandidates)
-	const fallbackTargets = {}
-	const preferredTarget = candidates[0] ? { type: 'candidate', target: candidates[0] } : null
-	return {
-		candidates,
-		bestCandidate: candidates[0] || null,
-		pageState: null,
-		fallbackTargets,
-		preferredTarget,
-		submitResult: null,
-		config,
-	}
-}
-
-var getAdEffectStateStore = () => {
-	window.__adEffectFormState = window.__adEffectFormState || {}
-	return window.__adEffectFormState
-}
-var getAdEffectStateKey = behaviorsId => behaviorsId || 'default'
-var rememberAdEffectFormCandidate = (candidate, behaviorsId) => {
-	if (!candidate || !candidate.fingerprint) return
-	const store = getAdEffectStateStore()
-	const stateKey = getAdEffectStateKey(behaviorsId)
-	store[stateKey] = { ...(store[stateKey] || {}), fingerprint: candidate.fingerprint }
-}
-var findAdEffectFormCandidate = (recognition, behaviorsId) => {
-	const candidates = recognition && recognition.candidates ? recognition.candidates : []
-	if (!candidates.length) return null
-	const state = getAdEffectStateStore()[getAdEffectStateKey(behaviorsId)]
-	if (state && state.fingerprint) {
-		const matched = candidates.find(candidate => candidate.fingerprint === state.fingerprint)
-		if (matched) return matched
-	}
-	return candidates[0]
-}
-var calculateAgeByBirthday = birthday => {
-	const birthdayText = String(birthday || '').trim()
-	const birthdayMatch = birthdayText.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-	const date = birthdayMatch
-		? new Date(Number(birthdayMatch[3]), Number(birthdayMatch[1]) - 1, Number(birthdayMatch[2]))
-		: new Date(birthdayText)
-	if (Number.isNaN(date.getTime())) return ''
-	const today = new Date()
-	let age = today.getFullYear() - date.getFullYear()
-	const monthDelta = today.getMonth() - date.getMonth()
-	if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < date.getDate())) age -= 1
-	return age > 0 ? String(age) : ''
-}
-var normalizeAdEffectPerson = rawPerson => ({
-	...rawPerson,
-	age: rawPerson.age || calculateAgeByBirthday(rawPerson.birthday),
-	fullName: rawPerson.fullName || '',
-	telephone: rawPerson.telephone || '',
-	temporaryMail: rawPerson.temporaryMail || '',
-})
-var getAdEffectFormDataUrl = countryCode => `${ADS_FORM_DATA_BASE_URL}${encodeURIComponent(countryCode || '')}`
-var fetchAdEffectPerson = countryCode =>
-	fetch(getAdEffectFormDataUrl(countryCode))
-		.then(response => response.json())
-		.then(result => {
-			const list = result && Array.isArray(result.data) ? result.data : []
-			if (!list.length) return null
-			return normalizeAdEffectPerson(list[Math.floor(Math.random() * list.length)])
-		})
-var getAdEffectPerson = (behaviorsId, countryCode) => {
-	const store = getAdEffectStateStore()
-	const stateKey = getAdEffectStateKey(behaviorsId)
-	const state = store[stateKey] || {}
-	if (state.person) return Promise.resolve(state.person)
-	return fetchAdEffectPerson(countryCode)
-		.then(person => {
-			state.person = person
-			store[stateKey] = state
-			return state.person
-		})
-		.catch(error => {
-			state.person = null
-			store[stateKey] = state
-			return state.person
-		})
-}
-
-function allACtion(jskey, searchText = 'iphone', step = '', behaviorsId = '', countryCode = 'US') {
-	const nowStep = step || '{step}'
-	let nextStep = ''
-	const ACTION_CONFIG = `{
-    "ADEFFECT": {
-      "pageFinish": false,
-      "slide": true
-    },
-    "INTERSTITIALCLOSE": {
-      "pageFinish": true,
-      "slide": false
-	    }
-	  }`
-	const ACTIONSJSON = `{config}`
-	let ACTION_KEY = {}
-	try {
-		ACTION_KEY = JSON.parse(ACTIONSJSON)
-	} catch (error) {}
-	ACTION_KEY['ADEFFECT'] = JSON.parse(ACTION_CONFIG)['ADEFFECT']
-	ACTION_KEY['INTERSTITIALCLOSE'] = JSON.parse(ACTION_CONFIG)['INTERSTITIALCLOSE']
-	const normalizeAction = String(jskey || '')
-		.trim()
-		.replace(/[\s_-]+/g, '')
-		.toUpperCase()
-
-	const viewportWidth = window.innerWidth || document.documentElement.clientWidth
-	const viewportHeight = window.innerHeight || document.documentElement.clientHeight
-	const maxViewportX = Math.max(0, viewportWidth - 1)
-	const maxViewportY = Math.max(0, viewportHeight - 1)
-	const currentAction = ACTION_KEY[normalizeAction]
-	const currentSlide = currentAction ? currentAction.slide : ''
-	const currentPageFinish = currentAction ? currentAction.pageFinish : ''
-
-	const randomItem = list => list[Math.floor(Math.random() * list.length)]
-	const clamp = (value, min, max) => Math.max(min, Math.min(value, max))
-	const isCurrentSlide = () => currentSlide === true || String(currentSlide).toLowerCase() === 'true'
-
-	const getDocumentBounds = () => {
-		const doc = document.documentElement
-		const body = document.body
-		return {
-			width: Math.max(doc.scrollWidth || 0, body ? body.scrollWidth || 0 : 0, window.innerWidth || 0),
-			height: Math.max(doc.scrollHeight || 0, body ? body.scrollHeight || 0 : 0, window.innerHeight || 0),
-			scrollLeft: window.pageXOffset || doc.scrollLeft || 0,
-			scrollTop: window.pageYOffset || doc.scrollTop || 0,
-		}
-	}
-
-	const isElementInDocumentRange = rect => {
-		const { width: docWidth, height: docHeight, scrollLeft, scrollTop } = getDocumentBounds()
-		const pageLeft = rect.left + scrollLeft
-		const pageRight = rect.right + scrollLeft
-		const pageTop = rect.top + scrollTop
-		const pageBottom = rect.bottom + scrollTop
-		return pageRight > 0 && pageLeft < docWidth && pageBottom > 0 && pageTop < docHeight
-	}
-
-	const hasVisibleStyle = element => {
-		let current = element
-		while (current && current !== document.documentElement) {
-			const style = window.getComputedStyle(current)
-			if (style.display === 'none') return false
-			if (style.visibility === 'hidden') return false
-			if (Number(style.opacity) === 0) return false
-			if (style.pointerEvents === 'none') return false
-			current = current.parentElement
-		}
-		return true
-	}
-
-	const isElementClickable = element => {
-		if (!element || !element.isConnected) return false
-		if (element.disabled) return false
-		if (!hasVisibleStyle(element)) return false
-
-		const rect = element.getBoundingClientRect()
-		if (rect.width <= 0 || rect.height <= 0) return false
-
-		return isElementInDocumentRange(rect)
-	}
-
-	const pointHitsElement = (element, x, y) => {
-		const topElement = document.elementFromPoint(x, y)
-		if (!topElement) return false
-		return topElement === element || element.contains(topElement)
-	}
-
-	const parsePseudoSelector = selector => {
-		const match = selector.match(/(::(?:before|after|first-line|first-letter|placeholder|marker))$/i)
-		if (match) {
-			return { baseSelector: selector.slice(0, match.index).trim() || '*', pseudo: match[1] }
-		}
-		return { baseSelector: selector, pseudo: null }
-	}
-
-	const getPseudoElementRect = (element, pseudo) => {
-		const style = window.getComputedStyle(element, pseudo)
-		if (style.display === 'none' || style.content === 'none' || style.content === 'normal') return null
-		const parentRect = element.getBoundingClientRect()
-		const w = parseFloat(style.width)
-		const h = parseFloat(style.height)
-		const effectiveWidth = w > 0 ? w : parentRect.width
-		const effectiveHeight = h > 0 ? h : parentRect.height
-		if (effectiveWidth <= 0 || effectiveHeight <= 0) return null
-		let top = parentRect.top
-		let left = parentRect.left
-		if (style.position === 'absolute' || style.position === 'fixed') {
-			const t = parseFloat(style.top)
-			const l = parseFloat(style.left)
-			const b = parseFloat(style.bottom)
-			const r = parseFloat(style.right)
-			if (!isNaN(t)) top = parentRect.top + t
-			else if (!isNaN(b)) top = parentRect.bottom - b - effectiveHeight
-			if (!isNaN(l)) left = parentRect.left + l
-			else if (!isNaN(r)) left = parentRect.right - r - effectiveWidth
-		}
-		return {
-			left,
-			top,
-			right: left + effectiveWidth,
-			bottom: top + effectiveHeight,
-			width: effectiveWidth,
-			height: effectiveHeight,
-		}
-	}
-
-	const getCandidatePoints = (element, rectOverride) => {
-		const rect = rectOverride || element.getBoundingClientRect()
-		if (!isElementInDocumentRange(rect)) return []
-
-		const innerLeft = rect.left + rect.width * 0.2
-		const innerRight = rect.right - rect.width * 0.2
-		const innerTop = rect.top + rect.height * 0.2
-		const innerBottom = rect.bottom - rect.height * 0.2
-
-		const pointLeft = clamp(innerLeft, 0, maxViewportX)
-		const pointRight = clamp(innerRight, 0, maxViewportX)
-
-		const pointTop = isCurrentSlide() ? innerTop : clamp(innerTop, 0, maxViewportY)
-		const pointBottom = isCurrentSlide() ? innerBottom : clamp(innerBottom, 0, maxViewportY)
-		const innerWidth = pointRight - pointLeft
-		const innerHeight = pointBottom - pointTop
-		if (innerWidth <= 0 || innerHeight <= 0) return []
-
-		const points = []
-		for (let i = 0; i < 13; i++) {
-			points.push({
-				x: pointLeft + Math.random() * innerWidth,
-				y: pointTop + Math.random() * innerHeight,
-			})
-		}
-		return points
-	}
-
-	const findClickablePoint = (element, rectOverride) => {
-		const points = getCandidatePoints(element, rectOverride)
-		if (points.length === 0) return null
-		const isPointInViewport = point => point.x >= 0 && point.x <= maxViewportX && point.y >= 0 && point.y <= maxViewportY
-
-		for (let i = 0; i < points.length; i++) {
-			const point = points[i]
-			if (!isPointInViewport(point)) {
-				if (isCurrentSlide()) return point
-				continue
-			}
-			if (pointHitsElement(element, point.x, point.y)) {
-				return point
-			}
-		}
-		return null
-	}
-
-	const getValidElementsWithPointBySelector = selector => {
-		if (!selector) return []
-		const { baseSelector, pseudo } = parsePseudoSelector(selector)
-		const candidates = Array.from(document.querySelectorAll(baseSelector))
-		if (pseudo) {
-			return candidates
-				.filter(el => el && document.body.contains(el) && hasVisibleStyle(el))
-				.map(element => {
-					const pseudoRect = getPseudoElementRect(element, pseudo)
-					if (!pseudoRect) return null
-					const point = findClickablePoint(element, pseudoRect)
-					return point ? { element, point } : null
-				})
-				.filter(Boolean)
-		}
-		return candidates
-			.filter(isElementClickable)
-			.map(element => {
-				const point = findClickablePoint(element)
-				return point ? { element, point } : null
-			})
-			.filter(Boolean)
-	}
-
-	const typeTextLikeKeyboard = (inputElement, text) => {
-		if (!inputElement) return
-		const target = String(text == null ? '' : text)
-		const setNativeValue = value => {
-			const ownDescriptor = Object.getOwnPropertyDescriptor(inputElement, 'value')
-			const prototype = Object.getPrototypeOf(inputElement)
-			const prototypeDescriptor = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')
-			const setter =
-				prototypeDescriptor && prototypeDescriptor.set && (!ownDescriptor || ownDescriptor.set !== prototypeDescriptor.set)
-					? prototypeDescriptor.set
-					: ownDescriptor && ownDescriptor.set
-			if (setter) setter.call(inputElement, value)
-			else inputElement.value = value
-		}
-		const dispatchInputEvent = data => {
-			try {
-				inputElement.dispatchEvent(
-					new InputEvent('input', {
-						data,
-						inputType: data ? 'insertText' : 'deleteContentBackward',
-						bubbles: true,
-					}),
+			.slice(0, 240),
+	summarizeAdsClickable = e => ({
+		tagName: e.tagName.toLowerCase(),
+		type: String(e.getAttribute('type') || '').toLowerCase(),
+		text: adsNormalizeSpace(e.textContent || e.value || ''),
+		ariaLabel: e.getAttribute('aria-label') || '',
+		title: e.getAttribute('title') || '',
+		href: e.getAttribute('href') || '',
+		name: e.getAttribute('name') || '',
+		id: e.id || '',
+		className: adsNormalizeSpace(e.className),
+		download: e.hasAttribute('download'),
+		visible: adsIsVisible(e),
+	}),
+	getAdsFieldSummary = e => ({
+		tagName: e.tagName.toLowerCase(),
+		type: String(e.getAttribute('type') || '').toLowerCase(),
+		name: e.getAttribute('name') || '',
+		id: e.id || '',
+		className: adsNormalizeSpace(e.className),
+		placeholder: e.getAttribute('placeholder') || '',
+		ariaLabel: e.getAttribute('aria-label') || '',
+		autocomplete: e.getAttribute('autocomplete') || '',
+		labelText: getAdsFieldLabel(e),
+		nearbyText: getAdsNearbyText(e),
+		wrapperText: getAdsWrapperText(e),
+		dataText: getAdsDataText(e),
+		inputMode: e.getAttribute('inputmode') || '',
+		visible: adsIsVisible(e),
+		disabled: Boolean(e.disabled),
+		readOnly: Boolean(e.readOnly),
+		required: Boolean(e.required),
+	}),
+	getAdsVisibleFields = (e, t) =>
+		adsQueryAll(e, t.fieldSelector)
+			.map(e => ({ element: e, summary: getAdsFieldSummary(e) }))
+			.filter(({ summary: e }) => e.visible && !e.disabled && !e.readOnly && !ADS_NON_FIELD_INPUT_TYPES.includes(e.type)),
+	adsUniqueElements = e => {
+		const t = new Set()
+		return e.filter(e => !(!e || t.has(e)) && (t.add(e), !0))
+	},
+	adsElementContains = (e, t) => e === t || Boolean(e?.contains?.(t)),
+	adsGetRect = e => (e && 'function' == typeof e.getBoundingClientRect ? e.getBoundingClientRect() : null),
+	getAdsEntriesBounds = e => {
+		const t = e.map(({ element: e }) => adsGetRect(e)).filter(e => e && e.width > 0 && e.height > 0)
+		return t.length
+			? {
+					left: Math.min(...t.map(e => e.left)),
+					top: Math.min(...t.map(e => e.top)),
+					right: Math.max(...t.map(e => e.right)),
+					bottom: Math.max(...t.map(e => e.bottom)),
+					width: Math.max(...t.map(e => e.right)) - Math.min(...t.map(e => e.left)),
+					height: Math.max(...t.map(e => e.bottom)) - Math.min(...t.map(e => e.top)),
+				}
+			: null
+	},
+	isAdsRootContainer = e => {
+		const t = String(e?.tagName || '').toLowerCase()
+		return 'html' === t || 'body' === t
+	},
+	getAdsFieldCandidateContainers = (e, t) => {
+		const n = e.element,
+			o = []
+		n.form && o.push(n.form)
+		const i = n.closest(t.candidateSelector)
+		i && o.push(i)
+		let r = n.parentElement
+		for (let e = 0; r && e < t.maxFieldAncestorDepth && !isAdsRootContainer(r); e += 1, r = r.parentElement) o.push(r)
+		return adsUniqueElements(o).filter(adsIsVisible)
+	},
+	getAdsCandidateContainers = (e, t, n) =>
+		adsUniqueElements([...adsQueryAll(e, n.candidateSelector), ...t.flatMap(e => getAdsFieldCandidateContainers(e, n))]).filter(
+			e => adsIsVisible(e) && !isAdsRootContainer(e),
+		),
+	summarizeAdsCandidate = (e, t, n) => {
+		const o = adsNormalizeText(e.textContent),
+			i = t
+				.map(({ summary: e }) =>
+					[e.type, e.name, e.id, e.placeholder, e.ariaLabel, e.autocomplete, e.labelText, e.nearbyText, e.wrapperText, e.dataText].join(
+						' ',
+					),
 				)
-			} catch (error) {
-				inputElement.dispatchEvent(new Event('input', { bubbles: true }))
-			}
+				.join(' ')
+		let r = 0
+		for (let t = e.parentElement; t; t = t.parentElement) r += 1
+		return {
+			tagName: e.tagName.toLowerCase(),
+			id: e.id || '',
+			className: adsNormalizeSpace(e.className),
+			visibleFieldCount: t.length,
+			requiredFieldCount: t.filter(({ summary: e }) => e.required).length,
+			visibleButtonCount: adsQueryAll(e, n.buttonSelector).filter(adsIsVisible).length,
+			hasSubmitKeyword: adsTextMatches(o, n.submitKeywords, 12, 8) > 0,
+			hasSearchLikeField: adsTextMatches(i, n.searchHints, 10, 8) > 0,
+			hasPasswordField: t.some(({ summary: e }) => 'password' === e.type),
+			hasPositiveKeyword: adsTextMatches(o, n.positiveKeywords, 8, 4) > 0,
+			hasNegativeKeyword: adsTextMatches(o, n.negativeKeywords, 8, 4) > 0,
+			domDepth: r,
+			textSample: o.slice(0, 160),
 		}
-		inputElement.focus()
-		setNativeValue('')
-		dispatchInputEvent('')
-
-		let currentValue = ''
-		for (let i = 0; i < target.length; i++) {
-			const ch = target[i]
-			inputElement.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }))
-			inputElement.dispatchEvent(new KeyboardEvent('keypress', { key: ch, bubbles: true }))
-			currentValue += ch
-			setNativeValue(currentValue)
-			dispatchInputEvent(ch)
-			inputElement.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }))
+	},
+	getAdsSubmitButtonScore = (e, t) => {
+		const n = [e.text, e.ariaLabel, e.title, e.name, e.id, e.className].join(' ')
+		return Math.max('submit' === e.type ? 12 : 0, adsTextMatches(n, t.submitKeywords, 14, 9))
+	},
+	getAdsButtonProximityScore = (e, t) => {
+		const n = getAdsEntriesBounds(t),
+			o = adsGetRect(e)
+		if (!n || !o) return 0
+		const i = Math.max(0, Math.min(n.right, o.right) - Math.max(n.left, o.left)) / Math.max(1, Math.min(n.width, o.width)),
+			r = o.top - n.bottom
+		return r >= -12 && r <= 360 && i > 0.25 ? 6 : Math.abs(r) <= 520 ? 3 : -6
+	},
+	findAdsSubmitButton = (e, t, n = [], o = null) => {
+		let i = null
+		const r = adsQueryAll(e, t.buttonSelector),
+			a = o && n.length ? adsQueryAll(o, t.buttonSelector) : [],
+			s = adsUniqueElements([...r, ...a])
+		for (const o of s) {
+			const r = summarizeAdsClickable(o)
+			if (!r.visible) continue
+			const a = adsElementContains(e, o),
+				s = o.form && o.form === e
+			if (!a && !s && !n.length) continue
+			let l = getAdsSubmitButtonScore(r, t)
+			;((l += a || s ? 3 : getAdsButtonProximityScore(o, n)),
+				l < 8 || (l > 0 && (!i || l > i.score) && (i = { element: o, summary: r, score: l })))
 		}
-		inputElement.dispatchEvent(new Event('change', { bubbles: true }))
+		return i || null
+	},
+	getAdsFieldMatchScore = (e, t) => {
+		const n = [
+			e.name,
+			e.id,
+			e.placeholder,
+			e.ariaLabel,
+			e.autocomplete,
+			e.labelText,
+			e.nearbyText,
+			e.wrapperText,
+			e.dataText,
+			e.className,
+		].join(' ')
+		let o = adsTextMatches(n, ADS_FIELD_ALIASES[t] || [], 18, 10)
+		return (
+			'age' === t && o > 0 && ('number' === e.type || 'numeric' === e.inputMode) && (o += 4),
+			'telephone' !== t || ('tel' !== e.type && 'tel' !== e.inputMode) || (o += o > 0 ? 8 : 16),
+			'temporaryMail' === t && 'email' === e.type && (o += o > 0 ? 8 : 16),
+			'birthday' === t && ['date', 'month'].includes(e.type) && (o += o > 0 ? 8 : 12),
+			o
+		)
+	},
+	matchAdsFormFields = e => {
+		const t = new Set(),
+			n = []
+		return (
+			ADS_FORM_STEPS.forEach(o => {
+				let i = null
+				;(e.forEach((e, n) => {
+					if (t.has(n)) return
+					const r = getAdsFieldMatchScore(e.summary, o)
+					r >= 8 && (!i || r > i.score) && (i = { ...e, step: o, entryIndex: n, score: r })
+				}),
+					i && (t.add(i.entryIndex), n.push(i)))
+			}),
+			n.sort((e, t) => e.entryIndex - t.entryIndex)
+		)
+	},
+	getAdsFormFingerprint = (e, t, n) =>
+		adsNormalizeText(
+			[
+				e.tagName,
+				e.id,
+				e.className,
+				t.map(({ summary: e }) => [e.type, e.name, e.id, e.placeholder, e.ariaLabel].join(':')).join('|'),
+				n && [n.summary.text, n.summary.id, n.summary.name].join(':'),
+			].join('|'),
+		),
+	scoreAdsCandidate = (e, t, n) => {
+		const o = t.map(e => e.step),
+			i = o.filter(e => ADS_PRIMARY_FORM_STEPS.includes(e)).length,
+			r = o.filter(e => ADS_SUPPORTING_FORM_STEPS.includes(e)).length,
+			a = t.length >= 2 || i >= 1 || (1 === e.visibleFieldCount && e.hasPositiveKeyword)
+		if (!n || !a) return { total: -10, reasons: [{ label: 'missing-submit-or-field-signal', score: -10 }] }
+		if (e.hasPasswordField || (e.hasSearchLikeField && t.length <= 1))
+			return { total: -10, reasons: [{ label: 'unsafe-form-kind', score: -10 }] }
+		if (e.hasNegativeKeyword && i <= 1 && !e.hasPositiveKeyword)
+			return { total: -10, reasons: [{ label: 'negative-form-context', score: -10 }] }
+		const s = []
+		let l = 0
+		const d = (e, t) => {
+			;((l += e), e && s.push({ label: t, score: e }))
+		}
+		return (
+			d('form' === e.tagName ? 6 : 2, 'container-type'),
+			d(5 * Math.min(t.length, 4), 'matched-fields'),
+			d(6 * Math.min(i, 2), 'primary-fields'),
+			d(2 * Math.min(r, 2), 'supporting-fields'),
+			d(e.requiredFieldCount > 0 ? 2 : 0, 'required-fields'),
+			d(e.visibleFieldCount >= 1 && e.visibleFieldCount <= 6 ? 4 : 0, 'balanced-field-count'),
+			d(e.hasPositiveKeyword ? 4 : 0, 'positive-keywords'),
+			d(e.hasSubmitKeyword ? 4 : 0, 'submit-copy'),
+			d(n.score >= 8 ? 6 : 3, 'submit-button'),
+			d(e.visibleFieldCount > 8 ? -Math.min(2 * (e.visibleFieldCount - 8), 12) : 0, 'too-many-fields'),
+			d(e.visibleButtonCount > 6 ? -Math.min(2 * (e.visibleButtonCount - 6), 8) : 0, 'too-many-buttons'),
+			d(e.hasSearchLikeField ? -12 : 0, 'search-like'),
+			d(e.hasPasswordField ? -16 : 0, 'password-field'),
+			d(e.hasNegativeKeyword ? -10 : 0, 'negative-keywords'),
+			d(0 === i && 0 === r ? -8 : 0, 'weak-field-semantics'),
+			{ total: l, reasons: s, matchedFieldCount: t.length, primaryFieldCount: i, supportingFieldCount: r }
+		)
 	}
-
-	const toPageCoordinate = point => {
-		const { height: docHeight, scrollTop } = getDocumentBounds()
-		if (!isCurrentSlide()) {
-			return {
-				x: clamp(point.x, 0, maxViewportX),
-				y: clamp(point.y, 0, maxViewportY),
+function recognizeAdsLandingPage(e = {}) {
+	const t = e.root || window.document
+	if (!t) throw new Error('recognizeAdsLandingPage requires a DOM root')
+	const n = { ...ADS_RECOGNITION_CONFIG, ...(e.overrides || {}) },
+		o = getAdsVisibleFields(t, n),
+		i = getAdsCandidateContainers(t, o, n)
+			.map(e => {
+				const i = o.filter(({ element: t }) => adsElementContains(e, t))
+				if (!i.length) return null
+				const r = summarizeAdsCandidate(e, i, n),
+					a = findAdsSubmitButton(e, n, i, t),
+					s = matchAdsFormFields(i)
+				if (!a) return null
+				const l = scoreAdsCandidate(r, s, a)
+				return l.total > 0
+					? {
+							element: e,
+							summary: r,
+							fieldEntries: i,
+							formFields: s,
+							matchedFields: s,
+							submitButton: a,
+							fingerprint: getAdsFormFingerprint(e, i, a),
+							score: l.total,
+							scoreDetails: l,
+						}
+					: null
+			})
+			.filter(Boolean)
+			.sort((e, t) => t.score - e.score)
+			.slice(0, n.maxCandidates),
+		r = i[0] ? { type: 'candidate', target: i[0] } : null
+	return {
+		candidates: i,
+		bestCandidate: i[0] || null,
+		pageState: null,
+		fallbackTargets: {},
+		preferredTarget: r,
+		submitResult: null,
+		config: n,
+	}
+}
+var getAdEffectStateStore = () => ((window.__adEffectFormState = window.__adEffectFormState || {}), window.__adEffectFormState),
+	getAdEffectStateKey = e => e || 'default',
+	rememberAdEffectFormCandidate = (e, t) => {
+		if (!e || !e.fingerprint) return
+		const n = getAdEffectStateStore(),
+			o = getAdEffectStateKey(t)
+		n[o] = { ...(n[o] || {}), fingerprint: e.fingerprint }
+	},
+	findAdEffectFormCandidate = (e, t) => {
+		const n = e && e.candidates ? e.candidates : []
+		if (!n.length) return null
+		const o = getAdEffectStateStore()[getAdEffectStateKey(t)]
+		if (o && o.fingerprint) {
+			const e = n.find(e => e.fingerprint === o.fingerprint)
+			if (e) return e
+		}
+		return n[0]
+	},
+	calculateAgeByBirthday = e => {
+		const t = String(e || '').trim(),
+			n = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/),
+			o = n ? new Date(Number(n[3]), Number(n[1]) - 1, Number(n[2])) : new Date(t)
+		if (Number.isNaN(o.getTime())) return ''
+		const i = new Date()
+		let r = i.getFullYear() - o.getFullYear()
+		const a = i.getMonth() - o.getMonth()
+		return ((a < 0 || (0 === a && i.getDate() < o.getDate())) && (r -= 1), r > 0 ? String(r) : '')
+	},
+	normalizeAdEffectPerson = e => ({
+		...e,
+		age: e.age || calculateAgeByBirthday(e.birthday),
+		fullName: e.fullName || '',
+		telephone: e.telephone || '',
+		temporaryMail: e.temporaryMail || '',
+	}),
+	getAdEffectFormDataUrl = e => `${ADS_FORM_DATA_BASE_URL}${encodeURIComponent(e || '')}`,
+	fetchAdEffectPerson = e =>
+		fetch(getAdEffectFormDataUrl(e))
+			.then(e => e.json())
+			.then(e => {
+				const t = e && Array.isArray(e.data) ? e.data : []
+				return t.length ? normalizeAdEffectPerson(t[Math.floor(Math.random() * t.length)]) : null
+			}),
+	getAdEffectPerson = (e, t) => {
+		const n = getAdEffectStateStore(),
+			o = getAdEffectStateKey(e),
+			i = n[o] || {}
+		return i.person
+			? Promise.resolve(i.person)
+			: fetchAdEffectPerson(t)
+					.then(e => ((i.person = e), (n[o] = i), i.person))
+					.catch(e => ((i.person = null), (n[o] = i), i.person))
+	},
+	startAdExposureMonitor = e => {
+		const t = 1e3,
+			n = String(e || '')
+				.replace(/::(?:before|after|first-line|first-letter|placeholder|marker)/gi, '')
+				.trim()
+		if (!n || 'function' != typeof window.IntersectionObserver) return null
+		const o = window.__adExposureMonitor
+		if (o && !o.stopped && o.selector === n) return (o.refresh(), o)
+		o && 'function' == typeof o.stop && o.stop()
+		const i = new WeakMap(),
+			r = new Set(),
+			a = { capture: !0, passive: !0 },
+			s = () => (window.performance && 'function' == typeof window.performance.now ? window.performance.now() : Date.now())
+		let l = 0,
+			d = !0,
+			c = 'hidden' !== document.visibilityState,
+			u = s(),
+			m = null,
+			p = null,
+			f = null,
+			h = !1
+		const g = `exposure_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+			b = e => {
+				;(null !== e.timerId && window.clearTimeout(e.timerId),
+					(e.timerId = null),
+					(e.visibleStartedAt = null),
+					(e.visibleStartedPerformanceAt = null))
+			},
+			y = e =>
+				!h &&
+				!e.hasExposed &&
+				!d &&
+				c &&
+				e.element.isConnected &&
+				e.isIntersecting &&
+				e.intersectionRatio > 0.5 &&
+				(e => {
+					let t = e
+					for (; t && t !== document.documentElement; ) {
+						const e = window.getComputedStyle(t)
+						if ('none' === e.display) return !1
+						if ('hidden' === e.visibility || 'collapse' === e.visibility) return !1
+						if (Number(e.opacity) <= 0) return !1
+						t = t.parentElement
+					}
+					return !0
+				})(e.element),
+			S = e => {
+				if (((e.timerId = null), !y(e))) return void b(e)
+				const o = s() - e.visibleStartedPerformanceAt
+				o >= t
+					? (e => {
+							const t = Date.now(),
+								o = Math.max(0, s() - e.visibleStartedPerformanceAt)
+							;((e.hasExposed = !0), (e.exposedAt = t), (e.timerId = null))
+							const i = e.element,
+								r = {
+									action: 'exposure',
+									event: 'qualified',
+									isExposed: !0,
+									monitorSessionId: g,
+									adId: e.adId,
+									adBusinessId: i.getAttribute('data-ad-id') || i.getAttribute('data-ad-slot') || i.getAttribute('data-ad-unit') || '',
+									elementId: i.id || '',
+									tagName: String(i.tagName || '').toLowerCase(),
+									className: adsNormalizeSpace(i.getAttribute('class') || ''),
+									selector: n,
+									intersectionRatio: Math.round(1e4 * e.intersectionRatio) / 1e4,
+									staticVisibleStartedAt: e.visibleStartedAt,
+									exposedAt: t,
+									staticVisibleDurationMs: Math.round(o),
+								}
+							try {
+								JSBehavior.dotrack('20', JSON.stringify(r))
+							} catch (e) {}
+						})(e)
+					: (e.timerId = window.setTimeout(() => S(e), t - o))
+			},
+			w = e => {
+				y(e) &&
+					null === e.timerId &&
+					null === e.visibleStartedPerformanceAt &&
+					((e.visibleStartedAt = Date.now()), (e.visibleStartedPerformanceAt = s()), (e.timerId = window.setTimeout(() => S(e), t)))
+			},
+			A = () => {
+				r.forEach(e => {
+					e.hasExposed || b(e)
+				})
+			},
+			E = () => {
+				h || d || !c || r.forEach(w)
+			},
+			C = e => {
+				if (h) return
+				const t = s() - u
+				!e && t < 200 ? (m = window.setTimeout(() => C(!1), 200 - t)) : (null !== m && window.clearTimeout(m), (m = null), (d = !1), E())
+			},
+			x = () => {
+				;(null !== m && window.clearTimeout(m), (m = window.setTimeout(() => C(!1), 200)))
+			},
+			v = () => {
+				h || ((u = s()), (d = !0), A(), x())
+			},
+			T = new IntersectionObserver(
+				e => {
+					e.forEach(e => {
+						const t = i.get(e.target)
+						t &&
+							((t.isIntersecting = e.isIntersecting), (t.intersectionRatio = e.intersectionRatio || 0), y(t) ? w(t) : t.hasExposed || b(t))
+					})
+				},
+				{ root: null, rootMargin: '0px', threshold: [0, 0.5, 0.500001, 1] },
+			),
+			N = e => {
+				if (!e || i.has(e)) return
+				const t = {
+					adId: 'ad_' + ++l,
+					element: e,
+					intersectionRatio: 0,
+					isIntersecting: !1,
+					visibleStartedAt: null,
+					visibleStartedPerformanceAt: null,
+					timerId: null,
+					hasExposed: !1,
+					exposedAt: null,
+				}
+				;(i.set(e, t), r.add(t), T.observe(e))
+			},
+			I = () => {
+				if (h) return 0
+				let e = []
+				try {
+					e = Array.from(document.querySelectorAll(n))
+				} catch (e) {
+					return 0
+				}
+				e.length > 0 && null !== f && (window.clearTimeout(f), (f = null))
+				const t = new Set(e)
+				return (
+					e.forEach(N),
+					r.forEach(e => {
+						;(e.element.isConnected && t.has(e.element)) || (b(e), T.unobserve(e.element), i.delete(e.element), r.delete(e))
+					}),
+					E(),
+					e.length
+				)
+			},
+			F = (e = 1) => {
+				if (h) return
+				f = null
+				I() > 0 || e >= 3 || (f = window.setTimeout(() => F(e + 1), 2e3))
+			},
+			M = () => {
+				;(null !== f && window.clearTimeout(f), (f = null), F())
+			},
+			L = new MutationObserver(() => {
+				null === p &&
+					(p = window.setTimeout(() => {
+						;((p = null), I())
+					}, 50))
+			})
+		L.observe(document.documentElement, {
+			childList: !0,
+			subtree: !0,
+			attributes: !0,
+			attributeFilter: ['id', 'class', 'style', 'hidden', 'data-ad-id', 'data-ad-slot', 'data-ad-unit'],
+		})
+		const B = () => {
+				h ||
+					((h = !0),
+					(P.stopped = !0),
+					T.disconnect(),
+					L.disconnect(),
+					A(),
+					null !== m && window.clearTimeout(m),
+					null !== p && window.clearTimeout(p),
+					null !== f && window.clearTimeout(f),
+					R.forEach(([e, t, n, o]) => e.removeEventListener(t, n, o)))
+			},
+			R = [
+				[document, 'scroll', v, a],
+				[
+					document,
+					'scrollend',
+					() => {
+						h || ((u = s()), C(!0))
+					},
+					a,
+				],
+				[document, 'wheel', v, a],
+				[document, 'touchmove', v, a],
+				[
+					document,
+					'visibilitychange',
+					() => {
+						if (((c = 'hidden' !== document.visibilityState), !c))
+							return ((d = !0), A(), null !== m && window.clearTimeout(m), void (m = null))
+						;((d = !0), (u = s()), A(), x())
+					},
+				],
+				[window, 'pagehide', B],
+			]
+		window.visualViewport && R.push([window.visualViewport, 'scroll', v, { passive: !0 }])
+		const P = { selector: n, monitorSessionId: g, stopped: !1, refresh: M, stop: B }
+		return ((window.__adExposureMonitor = P), R.forEach(([e, t, n, o]) => e.addEventListener(t, n, o)), M(), x(), P)
+	},
+	AdActionRuntime = (() => {
+		const e = (e, t, n) => Math.max(t, Math.min(e, n)),
+			t = e =>
+				String(e || '')
+					.trim()
+					.replace(/[\s_-]+/g, '')
+					.toUpperCase(),
+			n = e => !0 === e || 'true' === String(e).toLowerCase(),
+			o = e => (e ? e.x + ',' + e.y : ''),
+			i = (e, t) => e.x >= 0 && e.x <= t.maxX && e.y >= 0 && e.y <= t.maxY,
+			r = (e, t) => JSBehavior.dotrack(e, JSON.stringify(t)),
+			a = (e, t) => {
+				const {
+						action: o = e.action.toLowerCase(),
+						position: i = '',
+						nextStep: r = '',
+						slide: a = e.slide,
+						pageFinish: s = e.pageFinish,
+					} = t,
+					l = 'ACTIONFAIL' === e.action ? e.failedAction.toLowerCase() : o
+				'json' !== e.resultFormat
+					? JSBehavior.jsResult(l, i, r, a, s, e.behaviorsId)
+					: JSBehavior.jsResult(
+							JSON.stringify({ jskey: l, value: i, step: r, isScroll: String(n(a)), isJump: String(n(s)), behaviorsId: e.behaviorsId }),
+						)
 			}
+		function s(t, o) {
+			const { height: r, maxX: a, maxY: s } = t,
+				l = () => {
+					const e = document.documentElement,
+						t = document.body
+					return {
+						width: Math.max(e.scrollWidth || 0, (t && t.scrollWidth) || 0, window.innerWidth || 0),
+						height: Math.max(e.scrollHeight || 0, (t && t.scrollHeight) || 0, window.innerHeight || 0),
+						scrollLeft: window.pageXOffset || e.scrollLeft || 0,
+						scrollTop: window.pageYOffset || e.scrollTop || 0,
+					}
+				},
+				d = e => {
+					const { width: t, height: n, scrollLeft: o, scrollTop: i } = l(),
+						r = e.left + o,
+						a = e.right + o,
+						s = e.top + i,
+						d = e.bottom + i
+					return a > 0 && r < t && d > 0 && s < n
+				},
+				c = e => {
+					let t = e
+					for (; t && t !== document.documentElement; ) {
+						const e = window.getComputedStyle(t)
+						if ('none' === e.display) return !1
+						if ('hidden' === e.visibility) return !1
+						if (0 === Number(e.opacity)) return !1
+						if ('none' === e.pointerEvents) return !1
+						t = t.parentElement
+					}
+					return !0
+				},
+				u = e => {
+					if (!e || !e.isConnected) return !1
+					if (e.disabled) return !1
+					if (!c(e)) return !1
+					const t = e.getBoundingClientRect()
+					return !(t.width <= 0 || t.height <= 0) && d(t)
+				},
+				m = (e, t, n) => {
+					const o = document.elementFromPoint(t, n)
+					return !!o && (o === e || e.contains(o))
+				},
+				p = (r, l, c = o) => {
+					const u = ((t, i, r = o) => {
+						const l = i || t.getBoundingClientRect()
+						if (!d(l)) return []
+						const c = n(r),
+							u = l.left + 0.2 * l.width,
+							m = l.right - 0.2 * l.width,
+							p = l.top + 0.2 * l.height,
+							f = l.bottom - 0.2 * l.height,
+							h = e(u, 0, a),
+							g = e(m, 0, a),
+							b = c ? p : e(p, 0, s),
+							y = g - h,
+							S = (c ? f : e(f, 0, s)) - b
+						if (y <= 0 || S <= 0) return []
+						const w = []
+						for (let e = 0; e < 13; e++) w.push({ x: h + Math.random() * y, y: b + Math.random() * S })
+						return w
+					})(r, l, c)
+					if (0 === u.length) return null
+					const p = n(c)
+					for (let e = 0; e < u.length; e++) {
+						const n = u[e]
+						if (i(n, t)) {
+							if (m(r, n.x, n.y)) return n
+						} else if (p) return n
+					}
+					return null
+				}
+			return {
+				findTargets: (e, t = o) => {
+					if (!e) return []
+					const { baseSelector: n, pseudo: i } = (e => {
+							const t = e.match(/(::(?:before|after|first-line|first-letter|placeholder|marker))$/i)
+							return t ? { baseSelector: e.slice(0, t.index).trim() || '*', pseudo: t[1] } : { baseSelector: e, pseudo: null }
+						})(e),
+						r = Array.from(document.querySelectorAll(n))
+					return i
+						? r
+								.filter(e => e && document.body.contains(e) && c(e))
+								.map(e => {
+									const n = ((e, t) => {
+										const n = window.getComputedStyle(e, t)
+										if ('none' === n.display || 'none' === n.content || 'normal' === n.content) return null
+										const o = e.getBoundingClientRect(),
+											i = parseFloat(n.width),
+											r = parseFloat(n.height),
+											a = i > 0 ? i : o.width,
+											s = r > 0 ? r : o.height
+										if (a <= 0 || s <= 0) return null
+										let l = o.top,
+											d = o.left
+										if ('absolute' === n.position || 'fixed' === n.position) {
+											const e = parseFloat(n.top),
+												t = parseFloat(n.left),
+												i = parseFloat(n.bottom),
+												r = parseFloat(n.right)
+											;(isNaN(e) ? isNaN(i) || (l = o.bottom - i - s) : (l = o.top + e),
+												isNaN(t) ? isNaN(r) || (d = o.right - r - a) : (d = o.left + t))
+										}
+										return { left: d, top: l, right: d + a, bottom: l + s, width: a, height: s }
+									})(e, i)
+									if (!n) return null
+									const o = p(e, n, t)
+									return o ? { element: e, rect: n, point: o } : null
+								})
+								.filter(Boolean)
+						: r
+								.filter(u)
+								.map(e => {
+									const n = e.getBoundingClientRect(),
+										o = p(e, n, t)
+									return o ? { element: e, rect: n, point: o } : null
+								})
+								.filter(Boolean)
+				},
+				findPoint: p,
+				toCoordinate: (t, i = o) => {
+					const { height: r, scrollTop: d } = l()
+					return n(i) ? { x: e(t.x, 0, a), y: e(t.y + d, 0, Math.max(0, r - 1)) } : { x: e(t.x, 0, a), y: e(t.y, 0, s) }
+				},
+				getDocumentBounds: l,
+				scrollToPageY: (t, n) => {
+					const { height: o } = l(),
+						i = Math.max(0, o - r),
+						a = e(t - r / 2, 0, i),
+						s = window.requestAnimationFrame || (e => window.setTimeout(e, 16)),
+						d = Date.now()
+					let c = l().scrollTop,
+						u = 0,
+						m = !1
+					const p = () => {
+						const e = l().scrollTop
+						;(Math.abs(e - c) < 1 ? (u += 1) : (u = 0), (c = e))
+						const t = Date.now() - d
+						;(t >= 150 && u >= 5) || t >= 2e3 ? m || ((m = !0), n()) : s(p)
+					}
+					try {
+						window.scrollTo({ top: a, behavior: 'smooth' })
+					} catch (e) {
+						window.scrollTo(0, a)
+					}
+					s(p)
+				},
+			}
+		}
+		const l = e => {
+				;(e.dispatchEvent(new Event('input', { bubbles: !0 })), e.dispatchEvent(new Event('change', { bubbles: !0 })))
+			},
+			d = (e, t) => {
+				if (!e) return
+				const n = String(null == t ? '' : t),
+					o = t => {
+						const n = Object.getOwnPropertyDescriptor(e, 'value'),
+							o = Object.getPrototypeOf(e),
+							i = o && Object.getOwnPropertyDescriptor(o, 'value'),
+							r = !i || !i.set || (n && n.set === i.set) ? n && n.set : i.set
+						r ? r.call(e, t) : (e.value = t)
+					},
+					i = t => {
+						try {
+							e.dispatchEvent(new InputEvent('input', { data: t, inputType: t ? 'insertText' : 'deleteContentBackward', bubbles: !0 }))
+						} catch (t) {
+							e.dispatchEvent(new Event('input', { bubbles: !0 }))
+						}
+					}
+				;(e.focus(), o(''), i(''))
+				let r = ''
+				for (let t = 0; t < n.length; t++) {
+					const a = n[t]
+					;(e.dispatchEvent(new KeyboardEvent('keydown', { key: a, bubbles: !0 })),
+						e.dispatchEvent(new KeyboardEvent('keypress', { key: a, bubbles: !0 })),
+						(r += a),
+						o(r),
+						i(a),
+						e.dispatchEvent(new KeyboardEvent('keyup', { key: a, bubbles: !0 })))
+				}
+				e.dispatchEvent(new Event('change', { bubbles: !0 }))
+			},
+			c = (e, t) => {
+				const n = e && e.element,
+					o = null == t[e.step] ? '' : String(t[e.step])
+				if ('birthday' === e.step && n && 'date' === String(n.getAttribute('type') || '').toLowerCase()) {
+					const e = o.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+					if (e) {
+						const t = String(e[1]).padStart(2, '0'),
+							n = String(e[2]).padStart(2, '0')
+						return `${e[3]}-${t}-${n}`
+					}
+				}
+				return o
+			},
+			u = (e, t) => {
+				if (!e) return
+				const n = e.element,
+					o = String(n && n.tagName ? n.tagName : '').toLowerCase(),
+					i = String((n && n.getAttribute && n.getAttribute('type')) || '').toLowerCase()
+				if (n && 'select' === String(n.tagName || '').toLowerCase()) {
+					const o = ((e, t, n) => {
+						const o = Array.from(e.options || []).filter(e => !e.disabled),
+							i = [
+								c(t, n),
+								'state' === t.step ? n.stateFull : '',
+								'gender' === t.step ? n.gender : '',
+								'employmentStatus' === t.step ? n.employmentStatus : '',
+							]
+								.map(adsNormalizeText)
+								.filter(Boolean),
+							r = o.find(e => {
+								const t = adsNormalizeText([e.textContent, e.value].join(' '))
+								return i.some(e => t === e || t.includes(e) || e.includes(t))
+							})
+						return r || o.find(e => adsNormalizeSpace(e.value || e.textContent)) || o[0] || null
+					})(n, e, t)
+					if (!o) return
+					return (n.focus(), (n.value = o.value), (n.selectedIndex = Array.from(n.options || []).indexOf(o)), void l(n))
+				}
+				if ('checkbox' === i || 'radio' === i) return (n.focus(), n.checked || n.click(), void l(n))
+				;('input' !== o && 'textarea' !== o) || d(n, c(e, t))
+			}
+		function m(e, t) {
+			const n = e.config.INTERSTITIAL
+			return n && n.selector ? e.dom.findTargets(n.selector, t) : []
+		}
+		function p(e) {
+			return (
+				(function (e) {
+					if (['CHECKPAGE', 'INTERSTITIAL', 'INTERSTITIALCLOSE', 'EXPOSURE'].includes(e.action)) return null
+					const t = m(e, e.slide)
+					return t.length ? { type: 'interstitial', elements: t } : null
+				})(e) ||
+				(function (e) {
+					const t = e.config.BANNER
+					if (
+						!['CLICKAD', 'SECONDPAGE', 'ACTIONFAIL'].includes(e.action) ||
+						!t ||
+						!t.selector ||
+						(!1 !== t.slide && 'false' !== String(t.slide).toLowerCase())
+					)
+						return null
+					const n = e.dom
+						.findTargets(t.selector, t.slide)
+						.map(({ element: e }) => ({ element: e, rect: e.getBoundingClientRect() }))
+						.filter(({ rect: e }) => e.height > 360)
+					if (!n.length) return null
+					const o = n.reduce((e, t) => (t.rect.height > e.rect.height ? t : e))
+					return { type: 'highBanner', elements: n, selected: o }
+				})(e)
+			)
+		}
+		function f(e, t) {
+			const { element: n, rect: o } = t.selected,
+				s = (function (e, { element: t, rect: n }) {
+					const o = t.parentElement,
+						i = o ? o.getBoundingClientRect() : n,
+						r = o ? window.getComputedStyle(o) : null,
+						a = r && 'auto' !== r.top,
+						s = r && 'auto' !== r.bottom
+					return a && !s ? 'top' : s && !a ? 'bottom' : Math.abs(i.top) <= Math.abs(e.viewport.height - i.bottom) ? 'top' : 'bottom'
+				})(e, t.selected),
+				l =
+					'top' === s
+						? { x: o.left + 30 + Math.random(), y: o.bottom + 15 + Math.random() }
+						: { x: o.left + 30 + Math.random(), y: o.top - 15 + Math.random() },
+				d = i(l, e.viewport),
+				c = n.id || 'null',
+				u = d ? `${l.x},${l.y},${c}` : `,,${c}`
+			return (
+				r(26, {
+					action: e.action.toLowerCase(),
+					foundElementCount: t.elements.length,
+					elementIds: t.elements.map(e => e.element.id).filter(Boolean),
+					selectedElementId: c,
+					bannerHeight: o.height,
+					bannerPosition: s,
+					position: u,
+				}),
+				a(e, {
+					action: e.originalAction,
+					position: u,
+					nextStep: 'ACTIONFAIL' === e.action ? e.step : e.originalAction,
+					slide: !1,
+					pageFinish: !1,
+				}),
+				!0
+			)
+		}
+		function h(e, t = p(e)) {
+			return (
+				!!t &&
+				('interstitial' === t.type
+					? (function (e) {
+							return (a(e, { action: e.action.toLowerCase(), position: '', nextStep: 'irregularinter', slide: '', pageFinish: '' }), !0)
+						})(e)
+					: 'highBanner' === t.type && f(e, t))
+			)
+		}
+		const g = () => ('function' == typeof recognizeAdsLandingPage ? recognizeAdsLandingPage() : null),
+			b = e => ({ foundElementCount: e.length, elementIds: e.map(({ element: e }) => e.id).filter(Boolean) }),
+			y = (e, t) => {
+				if (!t.length) return { element: null, elementId: '', point: null, position: '' }
+				const { element: n, point: i } = (r = t)[Math.floor(Math.random() * r.length)]
+				var r
+				const a = e.dom.toCoordinate(i, e.slide)
+				return { element: n, elementId: n.id || '', point: a, position: o(a) }
+			},
+			S = (e, t) => {
+				const n = e.dom.findPoint(t, null, e.slide)
+				return n ? o(e.dom.toCoordinate(n, e.slide)) : ''
+			}
+		const w = { CLICKAD: '3', BANNER: '6', SECONDPAGE: '9', ASSOCIATIONSEARCH: '8', INTERSTITIAL: '7' }
+		function A(e) {
+			const t = e.actionConfig,
+				o = e.dom.findTargets(t && t.selector, e.slide),
+				i = 'CLICKAD' === e.action
+			let s = !1
+			if (i && o.length) {
+				const e = void 0 !== t.clickrate && null !== t.clickrate,
+					n = Number(t.clickrate),
+					i = Math.floor(100 * Math.random())
+				s = e && i > n * o.length
+			}
+			const l = y(e, s ? [] : o),
+				d = { position: l.point ? l.position + ',' + (l.elementId || 'null') : '' },
+				c = { action: e.action.toLowerCase(), ...b(o), selectedElementId: l.elementId, position: l.position }
+			if ((i && (c.shouldSkipClick = s), r(w[e.action] || '4', c), i && t && n(t.jsSlide) && l.point)) {
+				const { scrollTop: t } = e.dom.getDocumentBounds(),
+					n = l.point.y
+				if (n < t || n > t + e.viewport.maxY) return void e.dom.scrollToPageY(n, () => a(e, d))
+			}
+			return d
+		}
+		const E = {
+			ADEFFECT: function (e) {
+				const t = findAdEffectFormCandidate(g(), e.behaviorsId)
+				t &&
+					(rememberAdEffectFormCandidate(t, e.behaviorsId),
+					getAdEffectPerson(e.behaviorsId, e.countryCode).then(n => {
+						const o = t.formFields.map(e => e.step),
+							i = '{step}' === e.nowStep ? '' : e.nowStep,
+							r = o.indexOf(i),
+							s = e => t.formFields.find(t => t.step === e)
+						n && r >= 0 && u(s(o[r]), n)
+						const l = r >= 0 ? o[r + 1] : o[0],
+							d = l ? s(l).element : t.submitButton.element
+						a(e, { action: 'adeffect', position: S(e, d), nextStep: l || '' })
+					}))
+			},
+			CHECKPAGE: function (e) {
+				startAdExposureMonitor((e.config.EXPOSURE || {}).selector)
+				const t = [],
+					o = [],
+					i = new Set(),
+					a = new Set(['clickad', 'interstitial', 'banner'])
+				Object.keys(e.config).forEach(r => {
+					const s = e.config[r],
+						l = r.toLowerCase(),
+						d = [s && s.selector, s && s.inputSelector, s && s.buttonSelector]
+							.filter(Boolean)
+							.flatMap(t => e.dom.findTargets(t, s && s.slide)),
+						c = Array.from(new Map(d.map(e => [e.element, e])).values())
+					c.forEach(({ element: e }) => i.add(e))
+					const u = { action: l, foundElementCount: c.length }
+					if (a.has(l)) {
+						u.elementIds = b(c).elementIds
+						const t = n(s && s.slide),
+							{ scrollLeft: o, scrollTop: i } = e.dom.getDocumentBounds()
+						u.elements = c.map(({ element: e }) => {
+							const n = e.getBoundingClientRect()
+							return { elementId: e.id || '', width: n.width, height: n.height, left: n.left + (t ? o : 0), top: n.top + (t ? i : 0) }
+						})
+					}
+					;(o.push(u), c.length && t.push(l))
+				})
+				const s = g()
+				s && s.candidates && s.candidates.length && !t.includes('adeffect') && t.push('adeffect')
+				try {
+					r('1', { foundElementCount: i.size, matchedActions: t, actions: o })
+				} catch (e) {}
+				return { position: t.join(','), slide: '', pageFinish: '' }
+			},
+			SEARCH: function (e) {
+				const t = e.config.SEARCH || {},
+					n = y(e, e.dom.findTargets(t.inputSelector, e.slide))
+				let o = { element: null, elementId: '', position: '' },
+					i = ''
+				return (
+					'{step}' === e.nowStep
+						? ((o = n), (i = '{searchButton}'))
+						: '{searchButton}' === e.nowStep &&
+							n.element &&
+							(d(n.element, e.searchText), (o = y(e, e.dom.findTargets(t.buttonSelector, e.slide)))),
+					r('5', {
+						nowStep: e.nowStep,
+						elementId: o.elementId,
+						className: o.element ? adsNormalizeSpace(o.element.className) : '',
+						position: o.position,
+					}),
+					{ position: o.position, nextStep: i }
+				)
+			},
+			INTERSTITIALCLOSE: function (e) {
+				let t = ''
+				return (
+					(e.config.INTERSTITIAL.selector ? m(e, !1) : []).length &&
+						((t = o({ x: window.innerWidth - 10 - 48 + 48 * Math.random(), y: 10 + 24 * Math.random() })),
+						r('2', { action: e.action.toLowerCase(), position: t })),
+					{ position: t, slide: !1, pageFinish: !1 }
+				)
+			},
+			ACTIONFAIL: function (e) {
+				const t = 'ADEFFECT' === e.failedAction ? 'adeffect' : '',
+					n = (e => {
+						if ('string' != typeof e) return null
+						const t = e.split(',')
+						if (t.length < 2 || t.length > 3 || !t[0].trim() || !t[1].trim()) return null
+						const [n, o] = t.slice(0, 2).map(Number)
+						return Number.isFinite(n) && Number.isFinite(o) ? { x: n, y: o, position: e } : null
+					})(e.value)
+				if (!n) return { nextStep: t }
+				const { slide: o = '', pageFinish: i = '' } = e.config[e.failedAction] || {}
+				e.dom.scrollToPageY(n.y, () => {
+					a(e, { position: n.position, nextStep: t, slide: o, pageFinish: i })
+				})
+			},
 		}
 		return {
-			x: clamp(point.x, 0, maxViewportX),
-			y: clamp(point.y + scrollTop, 0, Math.max(0, docHeight - 1)),
-		}
-	}
-
-	let reportKey = ''
-	let reportPosition = ''
-	const getAdEffectRecognition = () => (typeof recognizeAdsLandingPage === 'function' ? recognizeAdsLandingPage() : null)
-	const hasAdEffectTarget = recognition => Boolean(recognition && recognition.candidates && recognition.candidates.length > 0)
-	const getPointPosition = element => {
-		const point = findClickablePoint(element)
-		if (!point) return ''
-		const coordinate = toPageCoordinate(point)
-		return `${coordinate.x},${coordinate.y}`
-	}
-	const reportAdEffect = (position = '', adEffectNextStep = '') => {
-		JSBehavior.jsResult('adeffect', position, adEffectNextStep, true, false, behaviorsId)
-	}
-	const getAdEffectFormField = (candidate, stepName) =>
-		candidate && candidate.formFields ? candidate.formFields.find(field => field.step === stepName) : null
-	const getAdEffectFieldValue = (field, formPerson) => {
-		const element = field && field.element
-		const value = formPerson[field.step] == null ? '' : String(formPerson[field.step])
-		if (field.step === 'birthday' && element && String(element.getAttribute('type') || '').toLowerCase() === 'date') {
-			const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-			if (match) {
-				const month = String(match[1]).padStart(2, '0')
-				const day = String(match[2]).padStart(2, '0')
-				return `${match[3]}-${month}-${day}`
-			}
-		}
-		return value
-	}
-	const findAdEffectSelectOption = (element, field, formPerson) => {
-		const options = Array.from(element.options || []).filter(option => !option.disabled)
-		const preferredValues = [
-			getAdEffectFieldValue(field, formPerson),
-			field.step === 'state' ? formPerson.stateFull : '',
-			field.step === 'gender' ? formPerson.gender : '',
-			field.step === 'employmentStatus' ? formPerson.employmentStatus : '',
-		]
-			.map(adsNormalizeText)
-			.filter(Boolean)
-		const matched = options.find(option => {
-			const text = adsNormalizeText([option.textContent, option.value].join(' '))
-			return preferredValues.some(value => text === value || text.includes(value) || value.includes(text))
-		})
-		if (matched) return matched
-		return options.find(option => adsNormalizeSpace(option.value || option.textContent)) || options[0] || null
-	}
-	const fillAdEffectFormField = (field, formPerson) => {
-		if (!field) return
-		const element = field.element
-		const tagName = String(element && element.tagName ? element.tagName : '').toLowerCase()
-		const inputType = String(element && element.getAttribute ? element.getAttribute('type') || '' : '').toLowerCase()
-		if (element && String(element.tagName || '').toLowerCase() === 'select') {
-			const option = findAdEffectSelectOption(element, field, formPerson)
-			if (!option) return
-			element.focus()
-			element.value = option.value
-			element.selectedIndex = Array.from(element.options || []).indexOf(option)
-			element.dispatchEvent(new Event('input', { bubbles: true }))
-			element.dispatchEvent(new Event('change', { bubbles: true }))
-			return
-		}
-		if (inputType === 'checkbox' || inputType === 'radio') {
-			element.focus()
-			if (!element.checked) element.click()
-			element.dispatchEvent(new Event('input', { bubbles: true }))
-			element.dispatchEvent(new Event('change', { bubbles: true }))
-			return
-		}
-		if (tagName === 'input' || tagName === 'textarea') {
-			typeTextLikeKeyboard(element, getAdEffectFieldValue(field, formPerson))
-		}
-	}
-
-	const shouldSkipInterstitialGuard =
-		normalizeAction === 'CHECKPAGE' || normalizeAction === 'INTERSTITIAL' || normalizeAction === 'INTERSTITIALCLOSE'
-	if (!shouldSkipInterstitialGuard && ACTION_KEY.INTERSTITIAL && ACTION_KEY.INTERSTITIAL.selector) {
-		const interstitialElements = getValidElementsWithPointBySelector(ACTION_KEY.INTERSTITIAL.selector)
-		if (interstitialElements.length > 0) {
-			JSBehavior.jsResult(normalizeAction.toLowerCase(), '', 'irregularinter', '', '', behaviorsId)
-			return
-		}
-	}
-
-	if (normalizeAction === 'ADEFFECT') {
-		const recognition = getAdEffectRecognition()
-		const formCandidate = findAdEffectFormCandidate(recognition, behaviorsId)
-
-		if (formCandidate) {
-			rememberAdEffectFormCandidate(formCandidate, behaviorsId)
-			getAdEffectPerson(behaviorsId, countryCode).then(formPerson => {
-				const formSteps = formCandidate.formFields.map(field => field.step)
-				const adEffectStep = nowStep === '{step}' ? '' : nowStep
-				const currentStepIndex = formSteps.indexOf(adEffectStep)
-				if (formPerson && currentStepIndex >= 0) {
-					fillAdEffectFormField(getAdEffectFormField(formCandidate, formSteps[currentStepIndex]), formPerson)
+			createContext: function (e, n = 'iphone', o = '', i = '', r = 'US', a = '', l = {}) {
+				let d = {}
+				try {
+					d = JSON.parse(`{config}`)
+				} catch (e) {}
+				;((d.ADEFFECT = { pageFinish: !1, slide: !0 }), (d.INTERSTITIALCLOSE = { pageFinish: !1, slide: !1 }))
+				const c = d.CLICKAD && d.CLICKAD.selector
+				;((d.EXPOSURE = d.EXPOSURE || {}), (d.EXPOSURE.selector = c || d.EXPOSURE.selector || null))
+				const u = t(e),
+					m = d[u],
+					p = void 0 === l.isScroll ? (m ? m.slide : '') : l.isScroll,
+					f = void 0 === l.isJump ? (m ? m.pageFinish : '') : l.isJump,
+					h = window.innerWidth || document.documentElement.clientWidth,
+					g = window.innerHeight || document.documentElement.clientHeight,
+					b = { width: h, height: g, maxX: Math.max(0, h - 1), maxY: Math.max(0, g - 1) }
+				return {
+					originalAction: e,
+					action: u,
+					failedAction: 'ACTIONFAIL' === u ? t(o) : '',
+					actionConfig: m,
+					config: d,
+					slide: p,
+					viewport: b,
+					pageFinish: f,
+					resultFormat: l.resultFormat,
+					searchText: n,
+					step: o,
+					nowStep: o || '{step}',
+					behaviorsId: i,
+					countryCode: r,
+					value: a,
+					dom: s(b, p),
 				}
-
-				const nextFormStep = currentStepIndex >= 0 ? formSteps[currentStepIndex + 1] : formSteps[0]
-				if (nextFormStep) {
-					reportAdEffect(getPointPosition(getAdEffectFormField(formCandidate, nextFormStep).element), nextFormStep)
-					return
-				}
-
-				reportAdEffect(getPointPosition(formCandidate.submitButton.element), '')
-			})
-			return
+			},
+			detectAdBlocker: p,
+			handleAdBlocker: h,
+			run: function (e) {
+				if (h(e)) return
+				const t = (E[e.action] || A)(e)
+				t && a(e, t)
+			},
 		}
+	})()
+function allACtion(e, t = 'iphone', n = '', o = '', i = 'US', r = '', a = {}) {
+	AdActionRuntime.run(AdActionRuntime.createContext(e, t, n, o, i, r, a))
+}
+function allACtionJSON(e) {
+	if ('string' != typeof e) return
+	let t
+	try {
+		t = JSON.parse(e)
+	} catch (e) {
 		return
-	} else if (normalizeAction === 'CHECKPAGE') {
-		const matchedActionKeys = []
-		const actionElementStats = []
-		const allFoundElements = new Set()
-		const actionsRequiringElementIds = new Set(['clickad', 'interstitial', 'banner'])
-		Object.keys(ACTION_KEY).forEach(actionKey => {
-			const actionConfig = ACTION_KEY[actionKey]
-			const normalizedActionKey = actionKey.toLowerCase()
-			const selectors = [
-				actionConfig && actionConfig.selector,
-				actionConfig && actionConfig.inputSelector,
-				actionConfig && actionConfig.buttonSelector,
-			].filter(Boolean)
-			const validElements = selectors.flatMap(selector => getValidElementsWithPointBySelector(selector))
-			const uniqueValidElements = Array.from(new Map(validElements.map(item => [item.element, item])).values())
-			uniqueValidElements.forEach(item => allFoundElements.add(item.element))
-			const actionStats = {
-				action: normalizedActionKey,
-				foundElementCount: uniqueValidElements.length,
-			}
-			if (actionsRequiringElementIds.has(normalizedActionKey)) {
-				actionStats.elementIds = uniqueValidElements.map(item => item.element.id).filter(Boolean)
-			}
-			actionElementStats.push(actionStats)
-			if (uniqueValidElements.length > 0) matchedActionKeys.push(normalizedActionKey)
-		})
-		const adEffectRecognition = getAdEffectRecognition()
-		if (hasAdEffectTarget(adEffectRecognition)) {
-			if (!matchedActionKeys.includes('adeffect')) matchedActionKeys.push('adeffect')
-		}
-		const trackData = {
-			foundElementCount: allFoundElements.size,
-			matchedActions: matchedActionKeys,
-			actions: actionElementStats,
-		}
-		try {
-			JSBehavior.dotrack('1', JSON.stringify(trackData))
-		} catch (error) {}
-		reportKey = matchedActionKeys.join(',')
-	} else if (normalizeAction === 'SEARCH') {
-		const searchConfig = ACTION_KEY.SEARCH || {}
-		const inputElements = getValidElementsWithPointBySelector(searchConfig.inputSelector)
-		const inputData = inputElements.length > 0 ? randomItem(inputElements) : null
-		let selectedSearchElement = null
-		let searchPosition = ''
-		if (nowStep === '{step}') {
-			if (inputData) {
-				const inputCoordinate = toPageCoordinate(inputData.point)
-				selectedSearchElement = inputData.element
-				searchPosition = `${inputCoordinate.x},${inputCoordinate.y}`
-				reportPosition = searchPosition
-			}
-			nextStep = '{searchButton}'
-		} else if (nowStep === '{searchButton}') {
-			if (inputData) {
-				typeTextLikeKeyboard(inputData.element, searchText)
-				const buttonElements = getValidElementsWithPointBySelector(searchConfig.buttonSelector)
-				if (buttonElements.length > 0) {
-					const buttonData = randomItem(buttonElements)
-					const buttonCoordinate = toPageCoordinate(buttonData.point)
-					selectedSearchElement = buttonData.element
-					searchPosition = `${buttonCoordinate.x},${buttonCoordinate.y}`
-					reportPosition = searchPosition
-				}
-			}
-		}
-		const trackData = {
-			nowStep,
-			elementId: selectedSearchElement ? selectedSearchElement.id || '' : '',
-			className: selectedSearchElement ? adsNormalizeSpace(selectedSearchElement.className) : '',
-			position: searchPosition,
-		}
-		JSBehavior.dotrack('5', JSON.stringify(trackData))
-	} else if (normalizeAction === 'INTERSTITIALCLOSE') {
-		const x = window.innerWidth - 10 - 48 + Math.random() * 48
-		const y = 10 + Math.random() * 24
-		reportPosition = `${x},${y}`
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			position: reportPosition,
-		}
-		JSBehavior.dotrack('2', JSON.stringify(trackData))
-	} else if (normalizeAction === 'CLICKAD') {
-		const selector = currentAction && currentAction.selector
-		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
-		const validElementCount = validElementsWithPoint.length
-		let selectedElementId = ''
-		let clickPosition = ''
-		let shouldSkipClick = false
-		if (validElementCount > 0) {
-			const hasClickRate = currentAction.clickrate !== undefined && currentAction.clickrate !== null
-			const clickRate = Number(currentAction.clickrate)
-			const randomNum = Math.floor(Math.random() * 100)
-
-			shouldSkipClick = hasClickRate && randomNum > clickRate * validElementCount
-			if (!shouldSkipClick) {
-				const randomData = randomItem(validElementsWithPoint)
-				const randomCoordinate = toPageCoordinate(randomData.point)
-				selectedElementId = randomData.element.id || ''
-				clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
-				reportPosition = `${clickPosition},${selectedElementId || 'null'}`
-			}
-		}
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			foundElementCount: validElementCount,
-			elementIds: validElementsWithPoint.map(item => item.element.id).filter(Boolean),
-			selectedElementId,
-			position: clickPosition,
-			shouldSkipClick,
-		}
-		JSBehavior.dotrack('3', JSON.stringify(trackData))
-	} else {
-		const selector = currentAction && currentAction.selector
-		const validElementsWithPoint = selector ? getValidElementsWithPointBySelector(selector) : []
-		const validElementCount = validElementsWithPoint.length
-		let selectedElementId = ''
-		let clickPosition = ''
-		if (validElementCount > 0) {
-			const randomData = randomItem(validElementsWithPoint)
-			const randomCoordinate = toPageCoordinate(randomData.point)
-			selectedElementId = randomData.element.id || ''
-			clickPosition = `${randomCoordinate.x},${randomCoordinate.y}`
-			reportPosition = `${clickPosition},${selectedElementId || 'null'}`
-		}
-
-		const trackData = {
-			action: normalizeAction.toLowerCase(),
-			foundElementCount: validElementCount,
-			elementIds: validElementsWithPoint.map(item => item.element.id).filter(Boolean),
-			selectedElementId,
-			position: clickPosition,
-		}
-		const trackTypeByAction = {
-			BANNER: '6',
-			SECONDPAGE: '9',
-			ASSOCIATIONSEARCH: '8',
-			INTERSTITIAL: '7',
-		}
-		const trackType = trackTypeByAction[normalizeAction] || '4'
-		JSBehavior.dotrack(trackType, JSON.stringify(trackData))
 	}
-
-	reportClick(reportKey, reportPosition)
-
-	function reportClick(key = '', position = '') {
-		const jskey = normalizeAction.toLowerCase()
-		if (jskey === 'checkpage') {
-			JSBehavior.jsResult(jskey, key, nextStep, '', '', behaviorsId)
-		} else {
-			JSBehavior.jsResult(key || jskey, position, nextStep, currentSlide, currentPageFinish, behaviorsId)
-		}
+	if (!t || 'object' != typeof t || Array.isArray(t)) return
+	if ('string' != typeof t.jskey || !t.jskey.replace(/[\s_-]+/g, '')) return
+	const n = { resultFormat: 'json' }
+	for (const e of ['isScroll', 'isJump']) {
+		if (void 0 === t[e]) continue
+		const o = 'string' == typeof t[e] ? t[e].trim().toLowerCase() : t[e]
+		if (!0 !== o && !1 !== o && 'true' !== o && 'false' !== o) return
+		n[e] = !0 === o || 'true' === o
 	}
+	return allACtion(t.jskey, t.searchText, t.step, t.behaviorsId, t.countryCode, t.value, n)
 }

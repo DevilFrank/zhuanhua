@@ -53,11 +53,28 @@ async function main() {
     // JS 滚动后重新确认同一元素的坐标，只回报一次。
     const scrolled = await execute({ config: adConfig({ jsSlide: true }), elements: [...ads(), overlay()], random: 0.25 })
     assert.equal(scrolled.syncResultCount, 0)
+    assert.equal(scrolled.syncCallCount, 1, 'selection must be logged before the scroll callback')
     assert.equal(scrolled.scrolls.length, 1)
     assert.equal(callResults(scrolled).length, 1)
     assert.equal(tracks(scrolled).length, 1)
     assert.equal(clickTrack(scrolled).selectedElementId, 'visible-ad')
     assert.ok(resultAt(scrolled)[2].endsWith(',visible-ad'))
+
+    // 滚动回调不执行时，屏内/屏外广告仍各自同步记录一次选择；不提前回报点击坐标。
+    for (const json of [false, true]) {
+      for (const [index, random] of [0.1, 0.5, 0.9].entries()) {
+        const pending = await execute({
+          json, random, suspendAnimationFrames: true, config: adConfig({ jsSlide: true }),
+          elements: [element('A', '.ad'), element('B', '.ad', { top: 900 }), element('C', '.ad', { top: 1500 })],
+        })
+        assert.equal(tracks(pending).length, 1, 'scroll interruption must not lose or duplicate the selection log')
+        assert.equal(pending.calls[0][0], 'dotrack')
+        assert.equal(pending.calls[0][1], '3')
+        assert.deepEqual(clickTrack(pending).elementIds, ['A', 'B', 'C'])
+        assert.equal(clickTrack(pending).selectedElementId, ['A', 'B', 'C'][index])
+        assert.equal(callResults(pending).length, index === 0 ? 1 : 0)
+      }
+    }
 
     // 无法点击时保留抽签结果、回报空坐标，禁止转选另一个广告。
     for (const json of [false, true]) {
@@ -65,7 +82,8 @@ async function main() {
         const blocked = await execute({ json, hitNone: true, config: adConfig({ slide, jsSlide: true }), random: 0.25 })
         assert.equal(clickTrack(blocked).selectedElementId, 'visible-ad')
         assert.equal(clickTrack(blocked).foundElementCount, slide ? 2 : 1)
-        assert.equal(clickTrack(blocked).position, '')
+        assert.equal(Boolean(clickTrack(blocked).position), slide, 'log retains the selection-time coordinate, independently of scroll failure')
+        assert.equal(tracks(blocked).length, 1)
         assert.equal(callResults(blocked).length, 1)
         assert.equal(json ? JSON.parse(resultAt(blocked)[1]).value : resultAt(blocked)[2], '')
       }

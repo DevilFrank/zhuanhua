@@ -92,7 +92,7 @@ async function run(source, scenario) {
     addEventListener() {}, removeEventListener() {},
     setTimeout(fn, delay = 0) { const id = ++timerId; timers.set(id, { fn, due: now + delay }); return id },
     clearTimeout(id) { timers.delete(id) },
-    requestAnimationFrame(fn) { return window.setTimeout(fn, 16) },
+    requestAnimationFrame(fn) { return scenario.suspendAnimationFrames ? 0 : window.setTimeout(fn, 16) },
     scrollTo(options, y) {
       if (scenario.smoothScrollThrows && typeof options === 'object') throw new Error('Smooth scrolling unsupported')
       const top = typeof options === 'object' ? options.top : y

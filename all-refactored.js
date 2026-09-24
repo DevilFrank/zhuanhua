@@ -1514,6 +1514,8 @@ var AdActionRuntime = (() => {
 			position: selected.position,
 		}
 		if (isAd) stats.shouldSkipClick = shouldSkipClick
+		// 选择结果立即且只上报一次，不依赖滚动完成；最终点击坐标由 jsResult 返回。
+		track(clickTrackTypes[context.action] || '4', stats)
 		if (isAd && config && isSlideEnabled(context.slide) && isSlideEnabled(config.jsSlide) && selected.point) {
 			const { scrollTop } = context.dom.getDocumentBounds()
 			const y = selected.point.y
@@ -1523,15 +1525,12 @@ var AdActionRuntime = (() => {
 					const refreshed = context.dom.findAdTargets(config.selector, false).find(target => target.element === adTarget.element)
 					const candidate = refreshed ? context.dom.findAdPoint(refreshed, false).point : null
 					const point = candidate ? context.dom.toCoordinate(candidate, context.slide) : null
-					stats.position = formatPoint(point)
-					result.position = point ? stats.position + ',' + (selected.elementId || 'null') : ''
-					track(clickTrackTypes[context.action], stats)
+					result.position = point ? formatPoint(point) + ',' + (selected.elementId || 'null') : ''
 					sendResult(context, result)
 				})
 				return
 			}
 		}
-		track(clickTrackTypes[context.action] || '4', stats)
 		return result
 	}
 

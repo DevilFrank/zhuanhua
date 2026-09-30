@@ -1078,16 +1078,18 @@ var AdActionRuntime = (() => {
 				const innerRight = Math.min(right, rect.right - rect.width * 0.2)
 				const innerTop = Math.max(top, rect.top + rect.height * 0.2)
 				const innerBottom = Math.min(bottom, rect.bottom - rect.height * 0.2)
-				return [{
-					element,
-					rect,
-					bounds: {
-						left: innerRight > innerLeft ? innerLeft : left,
-						right: innerRight > innerLeft ? innerRight : right,
-						top: innerBottom > innerTop ? innerTop : top,
-						bottom: innerBottom > innerTop ? innerBottom : bottom,
+				return [
+					{
+						element,
+						rect,
+						bounds: {
+							left: innerRight > innerLeft ? innerLeft : left,
+							right: innerRight > innerLeft ? innerRight : right,
+							top: innerBottom > innerTop ? innerTop : top,
+							bottom: innerBottom > innerTop ? innerBottom : bottom,
+						},
 					},
-				}]
+				]
 			})
 		}
 
@@ -1295,7 +1297,7 @@ var AdActionRuntime = (() => {
 		const elements = context.dom
 			.findTargets(config.selector, config.slide)
 			.map(({ element }) => ({ element, rect: element.getBoundingClientRect() }))
-			.filter(({ rect }) => rect.height > 360)
+			.filter(({ rect }) => rect.height > 300)
 		if (!elements.length) return null
 		const selected = elements.reduce((largest, current) => (current.rect.height > largest.rect.height ? current : largest))
 		return { type: 'highBanner', elements, selected }
